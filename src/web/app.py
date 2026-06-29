@@ -66,7 +66,7 @@ def create_app() -> Flask:
     # ------------------------------------------------------------------ #
     # Telegram always-on polling (web dashboard owns the command loop)
     # ------------------------------------------------------------------ #
-    _start_telegram_polling(bot)
+    _start_telegram_polling(multi_bot, app.secret_key)
 
     # ------------------------------------------------------------------ #
     # Auth routes (public)
@@ -1255,7 +1255,7 @@ def _read_today_pnl(user_id: int = 0) -> float:
 _tg_polling_started = False
 
 
-def _start_telegram_polling(bot_mgr) -> None:
+def _start_telegram_polling(bot_mgr, app_secret: str = "") -> None:
     """Start a single long-poll thread for Telegram commands.
     Runs in the web-dashboard process so commands work even when the
     arbitrage engine is stopped."""
@@ -1266,6 +1266,8 @@ def _start_telegram_polling(bot_mgr) -> None:
 
     import threading, time
     import httpx as _httpx
+
+    _app_secret = app_secret
 
     def _poll():
         env = read_env()
@@ -1328,18 +1330,29 @@ def _start_telegram_polling(bot_mgr) -> None:
                         send(HELP)
 
                     elif cmd == "/run":
-                        if bot_mgr.is_running:
-                            send("Бот уже запущен.")
+                        from web.auth import User
+                        admins = [u for u in User.all_users() if u.is_admin]
+                        if not admins:
+                            send("❌ Нет admin-пользователей.")
                         else:
-                            ok, msg_txt = bot_mgr.start()
-                            send(f"🚀 {msg_txt}" if ok else f"❌ {msg_txt}")
+                            uid = admins[0].id
+                            if bot_mgr.is_running(uid):
+                                send("Бот уже запущен.")
+                            else:
+                                user_env = get_effective_env(uid, _app_secret)
+                                ok, msg_txt = bot_mgr.start(uid, user_env)
+                                send(f"🚀 {msg_txt}" if ok else f"❌ {msg_txt}")
 
                     elif cmd == "/status":
+                        from web.auth import User
+                        admins = [u for u in User.all_users() if u.is_admin]
+                        uid = admins[0].id if admins else 0
                         env2   = read_env()
                         dry    = env2.get("DRY_RUN", "true").lower() == "true"
-                        status = "🟢 Работает" if bot_mgr.is_running else "🔴 Остановлен"
-                        pid    = f" (PID {bot_mgr.pid})" if bot_mgr.pid else ""
-                        pnl    = _read_today_pnl()
+                        running = bot_mgr.is_running(uid) if uid else False
+                        status = "🟢 Работает" if running else "🔴 Остановлен"
+                        pid    = f" (PID {bot_mgr.pid(uid)})" if (uid and bot_mgr.pid(uid)) else ""
+                        pnl    = _read_today_pnl(uid)
                         send(
                             f"*Статус*\n"
                             f"Бот: {status}{pid}\n"
@@ -1348,11 +1361,17 @@ def _start_telegram_polling(bot_mgr) -> None:
                         )
 
                     elif cmd == "/stop":
-                        if bot_mgr.is_running:
-                            ok, msg_txt = bot_mgr.stop()
-                            send("🛑 Бот остановлен." if ok else f"❌ {msg_txt}")
+                        from web.auth import User
+                        admins = [u for u in User.all_users() if u.is_admin]
+                        if not admins:
+                            send("❌ Нет admin-пользователей.")
                         else:
-                            send("Бот уже остановлен.")
+                            uid = admins[0].id
+                            if bot_mgr.is_running(uid):
+                                ok, msg_txt = bot_mgr.stop(uid)
+                                send("🛑 Бот остановлен." if ok else f"❌ {msg_txt}")
+                            else:
+                                send("Бот уже остановлен.")
 
                     elif cmd == "/opps":
                         try:
