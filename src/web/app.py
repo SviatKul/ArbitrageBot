@@ -123,31 +123,6 @@ def create_app() -> Flask:
         logout_user()
         return redirect(url_for("login"))
 
-    @app.route("/register", methods=["GET", "POST"])
-    def register():
-        from web.auth import User
-        if current_user.is_authenticated:
-            return redirect(url_for("index"))
-        error = None
-        if request.method == "POST":
-            username = request.form.get("username", "").strip()
-            password = request.form.get("password", "").strip()
-            confirm  = request.form.get("confirm", "").strip()
-            if not username or not password:
-                error = "Заполните все поля"
-            elif password != confirm:
-                error = "Пароли не совпадают"
-            elif len(password) < 6:
-                error = "Пароль минимум 6 символов"
-            elif User.get_by_username(username):
-                error = "Пользователь уже существует"
-            else:
-                User.create(username, password, is_admin=False)
-                u = User.get_by_username(username)
-                login_user(u)
-                return redirect(url_for("index"))
-        return render_template("register.html", error=error)
-
     # ------------------------------------------------------------------ #
     # Pages (protected)
     # ------------------------------------------------------------------ #
