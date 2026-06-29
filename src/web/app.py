@@ -972,25 +972,22 @@ def create_app() -> Flask:
             flash("Только администраторы", "error")
             return redirect(url_for("index"))
         import shutil
-        python_bin = shutil.which("python3") or "/usr/bin/python3"
-        # Try to find the venv python
-        venv_py = ROOT / ".venv" / "bin" / "python3"
+        venv_py = Path("/Users/mac/PycharmProjects/spred/.venv/bin/python3")
         if not venv_py.is_file():
-            venv_py = Path("/Users/mac/PycharmProjects/spred/.venv/bin/python3")
-        if venv_py.is_file():
-            python_bin = str(venv_py)
+            venv_py = ROOT / ".venv" / "bin" / "python3"
+        python_bin = str(venv_py) if venv_py.is_file() else (shutil.which("python3") or "/usr/bin/python3")
 
-        plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+        plist_bot = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.arbitragebot.web</string>
+    <string>com.arbitragebot.bot</string>
     <key>ProgramArguments</key>
     <array>
         <string>{python_bin}</string>
-        <string>{ROOT / 'web.py'}</string>
+        <string>{ROOT / 'run.py'}</string>
     </array>
     <key>WorkingDirectory</key>
     <string>{ROOT}</string>
@@ -999,9 +996,9 @@ def create_app() -> Flask:
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>{ROOT}/logs/web.log</string>
+    <string>{ROOT}/logs/bot.log</string>
     <key>StandardErrorPath</key>
-    <string>{ROOT}/logs/web.log</string>
+    <string>{ROOT}/logs/bot.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -1009,44 +1006,13 @@ def create_app() -> Flask:
     </dict>
 </dict>
 </plist>"""
-        plist_name = "com.arbitragebot.web.plist"
+        plist_name = "com.arbitragebot.bot.plist"
         plist_path = Path.home() / "Library" / "LaunchAgents" / plist_name
 
-        cloudflared_bin = shutil.which("cloudflared") or "/opt/homebrew/bin/cloudflared"
-        plist_tunnel = f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.arbitragebot.tunnel</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>{cloudflared_bin}</string>
-        <string>tunnel</string>
-        <string>--url</string>
-        <string>http://localhost:8080</string>
-        <string>--no-autoupdate</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>{ROOT}</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>{ROOT}/logs/tunnel.log</string>
-    <key>StandardErrorPath</key>
-    <string>{ROOT}/logs/tunnel.log</string>
-</dict>
-</plist>"""
-        tunnel_name = "com.arbitragebot.tunnel.plist"
-        tunnel_path = Path.home() / "Library" / "LaunchAgents" / tunnel_name
-
-        return render_template("autostart.html", plist=plist, plist_name=plist_name,
+        return render_template("autostart.html",
+                               plist=plist_bot, plist_name=plist_name,
                                plist_path=str(plist_path), root=str(ROOT),
-                               plist_tunnel=plist_tunnel, tunnel_name=tunnel_name,
-                               tunnel_path=str(tunnel_path),
+                               python_bin=python_bin,
                                current_user=current_user)
 
     @app.route("/autostart/install", methods=["POST"])

@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Автостарт — ArbitrageBot</title>
+<title>Автозапуск бота — ArbitrageBot</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <style>
-  :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--green:#3fb950;--red:#f85149;--yellow:#d29922;--blue:#58a6ff;}
+  :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--green:#3fb950;--blue:#58a6ff;--yellow:#d29922;}
   body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
   .card{background:var(--card);border:1px solid var(--border);border-radius:12px;}
   .navbar{background:var(--card)!important;border-bottom:1px solid var(--border);}
@@ -18,6 +18,8 @@
   .step-badge{width:28px;height:28px;border-radius:50%;background:rgba(88,166,255,.15);color:var(--blue);border:1px solid rgba(88,166,255,.3);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;flex-shrink:0;}
   textarea.plist-box{background:#010409;border:1px solid var(--border);color:#8b949e;font-family:monospace;font-size:.78rem;width:100%;resize:vertical;border-radius:8px;padding:12px;}
   .alert-info{background:rgba(88,166,255,.1);border-color:rgba(88,166,255,.3);color:var(--blue);}
+  .alert-success{background:rgba(63,185,80,.1);border-color:rgba(63,185,80,.3);color:var(--green);}
+  .badge-online{background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;}
 </style>
 </head>
 <body>
@@ -32,131 +34,125 @@
 </nav>
 
 <div class="container px-4" style="max-width:800px;">
-  {% with messages = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in messages %}
-  <div class="alert alert-{{ 'danger' if cat=='error' else 'success' }} py-2 mb-3">{{ msg }}</div>
-  {% endfor %}
-  {% endwith %}
 
-  <h4 class="mb-1"><i class="fas fa-rocket me-2" style="color:var(--blue);"></i>Автозапуск при старте системы</h4>
-  <p style="color:var(--muted);font-size:.9rem;margin-bottom:1.5rem;">macOS LaunchAgent — дашборд и Cloudflare Tunnel стартуют автоматически при входе в систему.</p>
+  <h4 class="mb-1"><i class="fas fa-robot me-2" style="color:var(--blue);"></i>Автозапуск арбитражного бота</h4>
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:1.5rem;">Бот запускается локально на твоём Mac и автоматически стартует при входе в систему.</p>
+
+  <!-- Статус дашборда -->
+  <div class="card p-3 mb-4 d-flex flex-row align-items-center gap-3">
+    <i class="fas fa-globe" style="color:var(--green);font-size:1.2rem;"></i>
+    <div>
+      <div class="fw-semibold">Дашборд уже в облаке <span class="badge-online ms-2">Online 24/7</span></div>
+      <div style="color:var(--muted);font-size:.85rem;">Работает на Railway — автозапуск не нужен. Доступен по постоянной ссылке.</div>
+    </div>
+  </div>
 
   <div class="alert alert-info mb-4 py-2">
     <i class="fas fa-info-circle me-2"></i>
-    Оба файла plist устанавливаются для текущего пользователя. Сервисы перезапускаются при падении (KeepAlive).
+    Бот (арбитражный движок) запускается отдельно на твоём Mac и требует API-ключи бирж.
   </div>
 
-  <!-- ===== WEB DASHBOARD ===== -->
-  <h6 class="text-uppercase mb-3" style="color:var(--muted);font-size:.75rem;letter-spacing:.08em;">
-    <i class="fas fa-globe me-1"></i>Часть 1 — Веб-дашборд
-  </h6>
-
-  <!-- Step 1: Save plist -->
+  <!-- Шаг 1: Требования -->
   <div class="card p-4 mb-3">
     <div class="d-flex gap-3 align-items-start mb-3">
       <div class="step-badge">1</div>
       <div>
-        <div class="fw-semibold mb-1">Сохрани plist дашборда</div>
-        <div style="color:var(--muted);font-size:.88rem;">Файл запишется в <code style="color:var(--blue);">~/Library/LaunchAgents/</code></div>
+        <div class="fw-semibold mb-1">Убедись что есть API-ключи</div>
+        <div style="color:var(--muted);font-size:.88rem;">Бот требует минимум 2 биржи. Добавь ключи в <a href="/settings#my-keys" style="color:var(--blue);">Settings → Мои ключи API</a>.</div>
       </div>
     </div>
-    <textarea class="plist-box mb-3" rows="16" id="plistContent">{{ plist }}</textarea>
+    <div style="font-size:.85rem;color:var(--muted);">
+      Минимальный набор для старта:
+      <ul class="mt-2 mb-0">
+        <li><strong style="color:var(--text);">Polymarket</strong> — API Key (уже настроен)</li>
+        <li><strong style="color:var(--text);">Kalshi</strong> — API Key ID + Private Key PEM</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Шаг 2: Запуск вручную -->
+  <div class="card p-4 mb-3">
+    <div class="d-flex gap-3 align-items-start mb-3">
+      <div class="step-badge">2</div>
+      <div>
+        <div class="fw-semibold mb-1">Проверь запуск вручную</div>
+        <div style="color:var(--muted);font-size:.88rem;">Сначала убедись что бот стартует без ошибок:</div>
+      </div>
+    </div>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCmd('cmd1')">Копировать</button>
+      <span id="cmd1" class="cmd">{{ python_bin }} {{ root }}/run.py</span>
+    </div>
+    <div style="color:var(--muted);font-size:.82rem;margin-top:8px;">
+      Бот должен написать <code style="color:var(--green);">Exchange enabled: Polymarket</code> и начать сканировать рынки. Остановить: <kbd>Ctrl+C</kbd>
+    </div>
+  </div>
+
+  <!-- Шаг 3: Установить plist -->
+  <div class="card p-4 mb-3">
+    <div class="d-flex gap-3 align-items-start mb-3">
+      <div class="step-badge">3</div>
+      <div>
+        <div class="fw-semibold mb-1">Сохрани файл автозапуска</div>
+        <div style="color:var(--muted);font-size:.88rem;">Установит бот как LaunchAgent — будет стартовать при входе и перезапускаться при падении.</div>
+      </div>
+    </div>
+    <textarea class="plist-box mb-3" rows="20" id="plistContent">{{ plist }}</textarea>
     <form method="post" action="/autostart/install" id="installForm">
       <input type="hidden" name="plist" id="plistHidden">
       <input type="hidden" name="plist_name" value="{{ plist_name }}">
       <button type="button" class="btn px-4" onclick="savePlist()"
               style="background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.4);">
-        <i class="fas fa-save me-2"></i>Сохранить {{ plist_name }}
+        <i class="fas fa-save me-2"></i>Установить {{ plist_name }}
       </button>
     </form>
   </div>
 
-  <!-- Step 2: Load -->
-  <div class="card p-4 mb-3">
-    <div class="d-flex gap-3 align-items-start mb-3">
-      <div class="step-badge">2</div>
-      <div>
-        <div class="fw-semibold mb-1">Активируй дашборд</div>
-        <div style="color:var(--muted);font-size:.88rem;">Выполни в терминале:</div>
-      </div>
-    </div>
-    <div class="code-block">
-      <button class="copy-btn" onclick="copyCmd('cmd1')">Копировать</button>
-      <span id="cmd1" class="cmd">launchctl load {{ plist_path }}</span>
-    </div>
-  </div>
-
-  <!-- ===== CLOUDFLARE TUNNEL ===== -->
-  <h6 class="text-uppercase mt-4 mb-3" style="color:var(--muted);font-size:.75rem;letter-spacing:.08em;">
-    <i class="fas fa-cloud me-1"></i>Часть 2 — Cloudflare Tunnel (публичный доступ)
-  </h6>
-
-  <div class="card p-4 mb-3">
-    <div class="d-flex gap-3 align-items-start mb-3">
-      <div class="step-badge">3</div>
-      <div>
-        <div class="fw-semibold mb-1">Сохрани plist туннеля</div>
-        <div style="color:var(--muted);font-size:.88rem;">URL будет записан в лог <code style="color:var(--blue);">logs/tunnel.log</code></div>
-      </div>
-    </div>
-    <textarea class="plist-box mb-3" rows="14" id="tunnelContent">{{ plist_tunnel }}</textarea>
-    <form method="post" action="/autostart/install" id="tunnelForm">
-      <input type="hidden" name="plist" id="tunnelHidden">
-      <input type="hidden" name="plist_name" value="{{ tunnel_name }}">
-      <button type="button" class="btn px-4" onclick="saveTunnel()"
-              style="background:rgba(88,166,255,.12);color:var(--blue);border:1px solid rgba(88,166,255,.3);">
-        <i class="fas fa-save me-2"></i>Сохранить {{ tunnel_name }}
-      </button>
-    </form>
-  </div>
-
+  <!-- Шаг 4: Активировать -->
   <div class="card p-4 mb-3">
     <div class="d-flex gap-3 align-items-start mb-3">
       <div class="step-badge">4</div>
       <div>
-        <div class="fw-semibold mb-1">Активируй туннель</div>
+        <div class="fw-semibold mb-1">Активируй автозапуск</div>
+        <div style="color:var(--muted);font-size:.88rem;">Выполни в терминале:</div>
       </div>
     </div>
-    <div class="code-block mb-2">
+    <div class="code-block">
       <button class="copy-btn" onclick="copyCmd('cmd2')">Копировать</button>
-      <span id="cmd2" class="cmd">launchctl load {{ tunnel_path }}</span>
-    </div>
-    <div style="color:var(--muted);font-size:.83rem;margin-top:8px;">
-      После запуска URL появится в логе:
-      <code style="color:var(--blue);">grep trycloudflare {{ root }}/logs/tunnel.log</code>
+      <span id="cmd2" class="cmd">launchctl load {{ plist_path }}</span>
     </div>
   </div>
 
-  <!-- Step: Verify both -->
+  <!-- Шаг 5: Проверка -->
   <div class="card p-4 mb-4">
     <div class="d-flex gap-3 align-items-start mb-3">
       <div class="step-badge">5</div>
       <div>
-        <div class="fw-semibold mb-1">Проверь что оба сервиса работают</div>
+        <div class="fw-semibold mb-1">Проверь что бот работает</div>
       </div>
     </div>
     <div class="code-block mb-2">
       <button class="copy-btn" onclick="copyCmd('cmd3')">Копировать</button>
-      <span id="cmd3" class="cmd">launchctl list | grep arbitrage</span>
+      <span id="cmd3" class="cmd">launchctl list | grep arbitragebot</span>
     </div>
-    <div style="color:var(--muted);font-size:.83rem;">Должны появиться строки с <code>com.arbitragebot.web</code> и <code>com.arbitragebot.tunnel</code>.</div>
+    <div style="color:var(--muted);font-size:.83rem;">Должна появиться строка с <code>com.arbitragebot.bot</code>. Логи: <code>{{ root }}/logs/bot.log</code></div>
   </div>
 
-  <!-- Stop / uninstall -->
-  <div class="card p-4">
-    <div class="fw-semibold mb-2" style="color:var(--muted);">Управление</div>
-    <div class="d-flex flex-column gap-2">
+  <!-- Управление -->
+  <div class="card p-4 mb-5">
+    <div class="fw-semibold mb-3" style="color:var(--muted);">Управление</div>
+    <div class="d-flex flex-column gap-3">
       <div>
-        <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">Остановить дашборд:</div>
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">Остановить бот:</div>
         <div class="code-block"><button class="copy-btn" onclick="copyCmd('cmd4')">Копировать</button><span id="cmd4" class="cmd">launchctl unload {{ plist_path }}</span></div>
       </div>
       <div>
-        <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">Остановить туннель:</div>
-        <div class="code-block"><button class="copy-btn" onclick="copyCmd('cmd5')">Копировать</button><span id="cmd5" class="cmd">launchctl unload {{ tunnel_path }}</span></div>
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">Удалить из автозапуска:</div>
+        <div class="code-block"><button class="copy-btn" onclick="copyCmd('cmd5')">Копировать</button><span id="cmd5" class="cmd">launchctl unload {{ plist_path }} && rm {{ plist_path }}</span></div>
       </div>
       <div>
-        <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">Удалить оба из автозапуска:</div>
-        <div class="code-block"><button class="copy-btn" onclick="copyCmd('cmd6')">Копировать</button><span id="cmd6" class="cmd">rm {{ plist_path }} {{ tunnel_path }}</span></div>
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">Смотреть логи в реальном времени:</div>
+        <div class="code-block"><button class="copy-btn" onclick="copyCmd('cmd6')">Копировать</button><span id="cmd6" class="cmd">tail -f {{ root }}/logs/bot.log</span></div>
       </div>
     </div>
   </div>
@@ -169,16 +165,11 @@ function savePlist() {
   document.getElementById('plistHidden').value = document.getElementById('plistContent').value;
   document.getElementById('installForm').submit();
 }
-function saveTunnel() {
-  document.getElementById('tunnelHidden').value = document.getElementById('tunnelContent').value;
-  document.getElementById('tunnelForm').submit();
-}
 function copyCmd(id) {
-  const text = document.getElementById(id).textContent;
-  navigator.clipboard.writeText(text).then(() => {
+  navigator.clipboard.writeText(document.getElementById(id).textContent).then(() => {
     const btn = event.target;
     btn.textContent = 'Скопировано!';
-    setTimeout(() => { btn.textContent = 'Копировать'; }, 1500);
+    setTimeout(() => btn.textContent = 'Копировать', 1500);
   });
 }
 </script>
