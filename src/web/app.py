@@ -14,8 +14,9 @@ from web.audit import init_audit, log as audit_log
 from web.audit import (LOGIN_OK, LOGIN_FAIL, LOGOUT, PW_CHANGE, PW_RESET,
                        USER_CREATE, USER_DELETE, SETTINGS_SAVE, BOT_START,
                        BOT_STOP, TOTP_ENABLE, TOTP_DISABLE, TOTP_FAIL)
-from web.bot_manager import BotManager, ROOT
-from web.env_manager import read_env, write_env
+from web.bot_manager import ROOT
+from web.env_manager import read_env, write_env, get_effective_env
+from web.multi_bot_manager import MultiBotManager
 from web.opportunity_store import (init_opportunity_store, get_opportunities,
                                    get_stats as opp_stats, get_daily_stats,
                                    get_best_pairs, get_hourly_heatmap,
@@ -23,11 +24,21 @@ from web.opportunity_store import (init_opportunity_store, get_opportunities,
 
 sys.path.insert(0, str(ROOT / "src"))
 
-POSITIONS_FILE = ROOT / "data" / "positions.json"
-TRADES_CSV     = ROOT / "data" / "trades.csv"
-STORAGE_DIR    = ROOT / "storage"
+STORAGE_DIR = ROOT / "storage"
 
-bot = BotManager()
+multi_bot = MultiBotManager()
+
+
+def _user_trades_csv(user_id: int):
+    p = ROOT / "data" / f"user_{user_id}" / "trades.csv"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _user_positions(user_id: int):
+    p = ROOT / "data" / f"user_{user_id}" / "positions.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def _classify_log(line: str) -> str:
@@ -112,6 +123,31 @@ def create_app() -> Flask:
         logout_user()
         return redirect(url_for("login"))
 
+    @app.route("/register", methods=["GET", "POST"])
+    def register():
+        from web.auth import User
+        if current_user.is_authenticated:
+            return redirect(url_for("index"))
+        error = None
+        if request.method == "POST":
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "").strip()
+            confirm  = request.form.get("confirm", "").strip()
+            if not username or not password:
+                error = "Заполните все поля"
+            elif password != confirm:
+                error = "Пароли не совпадают"
+            elif len(password) < 6:
+                error = "Пароль минимум 6 символов"
+            elif User.get_by_username(username):
+                error = "Пользователь уже существует"
+            else:
+                User.create(username, password, is_admin=False)
+                u = User.get_by_username(username)
+                login_user(u)
+                return redirect(url_for("index"))
+        return render_template("register.html", error=error)
+
     # ------------------------------------------------------------------ #
     # Pages (protected)
     # ------------------------------------------------------------------ #
@@ -121,12 +157,12 @@ def create_app() -> Flask:
     def index():
         env = read_env()
         exchanges = _exchange_status(env)
-        positions = _load_positions()
-        logs = bot.tail_log(150)
+        positions = _load_positions(current_user.id)
+        logs = multi_bot.tail_log(current_user.id, 150)
         return render_template(
             "index.html",
-            is_running=bot.is_running,
-            pid=bot.pid,
+            is_running=multi_bot.is_running(current_user.id),
+            pid=multi_bot.pid(current_user.id),
             exchanges=exchanges,
             positions=positions,
             logs=logs,
@@ -478,7 +514,7 @@ def create_app() -> Flask:
             db_ok = False
         return jsonify({
             "ok":      db_ok and True,
-            "bot":     bot.is_running,
+            "bot":     multi_bot.is_running(current_user.id) if current_user.is_authenticated else False,
             "db":      db_ok,
             "version": "1.0.0",
         }), 200 if db_ok else 503
@@ -512,29 +548,32 @@ def create_app() -> Flask:
     @app.route("/api/start", methods=["POST"])
     @login_required
     def api_start():
-        ok, msg = bot.start()
+        user_env = get_effective_env(current_user.id, app.secret_key)
+        ok, msg = multi_bot.start(current_user.id, user_env)
         if ok:
             audit_log(BOT_START, user_id=current_user.id, username=current_user.username,
                       ip=request.remote_addr)
-        return jsonify({"ok": ok, "message": msg, "running": bot.is_running, "pid": bot.pid})
+        return jsonify({"ok": ok, "message": msg,
+                        "running": multi_bot.is_running(current_user.id),
+                        "pid": multi_bot.pid(current_user.id)})
 
     @app.route("/api/stop", methods=["POST"])
     @login_required
     def api_stop():
-        ok, msg = bot.stop()
+        ok, msg = multi_bot.stop(current_user.id)
         if ok:
             audit_log(BOT_STOP, user_id=current_user.id, username=current_user.username,
                       ip=request.remote_addr)
-        return jsonify({"ok": ok, "message": msg, "running": bot.is_running})
+        return jsonify({"ok": ok, "message": msg, "running": multi_bot.is_running(current_user.id)})
 
     @app.route("/api/status")
     @login_required
     def api_status():
-        env = read_env()
-        positions = _load_positions()
+        env = get_effective_env(current_user.id, app.secret_key)
+        positions = _load_positions(current_user.id)
         return jsonify({
-            "running": bot.is_running,
-            "pid": bot.pid,
+            "running": multi_bot.is_running(current_user.id),
+            "pid": multi_bot.pid(current_user.id),
             "dry_run": env.get("DRY_RUN", "true").lower() == "true",
             "exchanges": _exchange_status(env),
             "open_positions": positions.get("open_count", 0),
@@ -544,7 +583,7 @@ def create_app() -> Flask:
     @app.route("/api/logs")
     @login_required
     def api_logs():
-        lines = bot.tail_log(int(request.args.get("n", 200)))
+        lines = multi_bot.tail_log(current_user.id, int(request.args.get("n", 200)))
         return jsonify({"lines": lines})
 
     @app.route("/api/trades")
@@ -553,7 +592,7 @@ def create_app() -> Flask:
         n = int(request.args.get("n", 50))
         try:
             from core.trade_log import TradeLogger
-            tl = TradeLogger(TRADES_CSV)
+            tl = TradeLogger(_user_trades_csv(current_user.id))
             return jsonify({"trades": tl.recent(n), "summary": tl.summary()})
         except Exception:
             return jsonify({"trades": [], "summary": {}})
@@ -561,7 +600,7 @@ def create_app() -> Flask:
     @app.route("/api/pnl-history")
     @login_required
     def api_pnl_history():
-        pnl_file = ROOT / "data" / "pnl_history.json"
+        pnl_file = multi_bot.data_dir(current_user.id) / "pnl_history.json"
         if not pnl_file.is_file():
             return jsonify({"history": []})
         try:
@@ -574,8 +613,9 @@ def create_app() -> Flask:
     @app.route("/api/logs/stream")
     @login_required
     def api_logs_stream():
+        uid = current_user.id
         def generate():
-            for line in bot.stream_log():
+            for line in multi_bot.stream_log(uid):
                 yield f"data: {json.dumps(line)}\n\n"
         return Response(
             stream_with_context(generate()),
@@ -661,10 +701,11 @@ def create_app() -> Flask:
     @login_required
     def pnl():
         from core.trade_log import TradeLogger
-        tl = TradeLogger(TRADES_CSV)
+        trades_csv = _user_trades_csv(current_user.id)
+        tl = TradeLogger(trades_csv)
         trades   = tl.recent(500)
         summary  = tl.summary()
-        pnl_file = ROOT / "data" / "pnl_history.json"
+        pnl_file = multi_bot.data_dir(current_user.id) / "pnl_history.json"
         pnl_history: list[dict] = []
         if pnl_file.is_file():
             try:
@@ -679,8 +720,9 @@ def create_app() -> Flask:
     @login_required
     def pnl_download():
         from flask import send_file
-        if TRADES_CSV.is_file():
-            return send_file(TRADES_CSV, mimetype="text/csv",
+        trades_csv = _user_trades_csv(current_user.id)
+        if trades_csv.is_file():
+            return send_file(trades_csv, mimetype="text/csv",
                              as_attachment=True, download_name="trades.csv")
         return "Нет данных", 404
 
@@ -798,7 +840,7 @@ def create_app() -> Flask:
             except Exception:
                 pass
         return render_template("markets.html", live=live,
-                               is_running=bot.is_running, current_user=current_user)
+                               is_running=multi_bot.is_running(current_user.id), current_user=current_user)
 
     # ------------------------------------------------------------------ #
     # Snapshot recorder (saves current live_opportunities to CSV for backtest)
@@ -1202,12 +1244,13 @@ def _exchange_status(env: dict) -> list[dict]:
     ]
 
 
-def _load_positions() -> dict:
-    daily_pnl = _read_today_pnl()
-    if not POSITIONS_FILE.is_file():
+def _load_positions(user_id: int = 0) -> dict:
+    daily_pnl = _read_today_pnl(user_id)
+    pos_file = _user_positions(user_id) if user_id else ROOT / "data" / "positions.json"
+    if not pos_file.is_file():
         return {"open_count": 0, "positions": [], "daily_pnl": daily_pnl}
     try:
-        data = json.loads(POSITIONS_FILE.read_text(encoding="utf-8"))
+        data = json.loads(pos_file.read_text(encoding="utf-8"))
         return {
             "open_count": data.get("open_count", 0),
             "positions":  data.get("positions", []),
@@ -1217,8 +1260,8 @@ def _load_positions() -> dict:
         return {"open_count": 0, "positions": [], "daily_pnl": daily_pnl}
 
 
-def _read_today_pnl() -> float:
-    pnl_file = ROOT / "data" / "pnl_history.json"
+def _read_today_pnl(user_id: int = 0) -> float:
+    pnl_file = (multi_bot.data_dir(user_id) if user_id else ROOT / "data") / "pnl_history.json"
     if not pnl_file.is_file():
         return 0.0
     try:

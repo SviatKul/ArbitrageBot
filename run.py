@@ -22,8 +22,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
+import os as _os
+
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
+
+# Per-user data isolation: ARBITRAGE_DATA_DIR overrides default data/
+DATA_DIR = Path(_os.environ.get("ARBITRAGE_DATA_DIR", str(ROOT / "data")))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 from clients.betdaq_client import BetdaqClient
 from clients.betfair_client import BetfairClient
@@ -458,10 +464,11 @@ def run_iteration(
 
 def main() -> None:
     settings = get_settings()
-    snapshot_path = ROOT / settings.positions_snapshot_path
-    log_dir = ROOT / settings.log_directory
+    snapshot_path = DATA_DIR / "positions.json"
+    log_dir = Path(_os.environ.get("ARBITRAGE_LOG_DIR", str(ROOT / settings.log_directory)))
+    log_dir.mkdir(parents=True, exist_ok=True)
     if _OPP_STORE_OK:
-        init_opportunity_store(ROOT / "data")
+        init_opportunity_store(DATA_DIR)
 
     setup_logging_rotating(
         settings.log_level,
@@ -504,8 +511,8 @@ def main() -> None:
         # Wrap adapter so it implements ExchangeClient for Polymarket execution
         clients[Venue.POLYMARKET]._exec_adapter = poly_adapter
 
-    trade_log = TradeLogger(ROOT / "data" / "trades.csv")
-    pnl_tracker = PnLTracker(ROOT / "data" / "pnl_history.json")
+    trade_log = TradeLogger(DATA_DIR / "trades.csv")
+    pnl_tracker = PnLTracker(DATA_DIR / "pnl_history.json")
 
     def _on_trade_success(opp) -> None:
         if _OPP_STORE_OK:
