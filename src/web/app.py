@@ -63,6 +63,13 @@ def create_app() -> Flask:
     init_audit(STORAGE_DIR / "audit.db")
     init_opportunity_store(ROOT / "data")
 
+    # Auto-create admin from env vars (for Railway / fresh deploys)
+    import os as _os
+    _admin_user = _os.environ.get("ADMIN_USERNAME", "").strip()
+    _admin_pass = _os.environ.get("ADMIN_PASSWORD", "").strip()
+    if _admin_user and _admin_pass and user_count() == 0:
+        User.create(_admin_user, _admin_pass, is_admin=True)
+
     # ------------------------------------------------------------------ #
     # Telegram always-on polling (web dashboard owns the command loop)
     # ------------------------------------------------------------------ #
