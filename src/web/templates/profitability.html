@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Прогноз доходности — ArbitrageBot</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:#0d1117; --card:#161b22; --border:#30363d; --text:#e6edf3;
+  --muted:#8b949e; --green:#3fb950; --red:#f85149; --yellow:#d29922; --blue:#58a6ff;
+}
+body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:.92rem; }
+.navbar { background:var(--card)!important; border-bottom:1px solid var(--border); }
+.card { background:var(--card); border:1px solid var(--border); border-radius:12px; }
+.card-header { border-bottom:1px solid var(--border); background:rgba(255,255,255,.03); border-radius:12px 12px 0 0!important; padding:.9rem 1.2rem; }
+
+/* Scenario cards */
+.scenario-card { border-radius:14px; padding:1.4rem; margin-bottom:1.5rem; }
+.scenario-danger  { background:rgba(248,81,73,.07);  border:1px solid rgba(248,81,73,.25); }
+.scenario-warning { background:rgba(210,153,34,.07); border:1px solid rgba(210,153,34,.25); }
+.scenario-success { background:rgba(63,185,80,.07);  border:1px solid rgba(63,185,80,.25); }
+.scenario-danger  .sc-title { color:var(--red); }
+.scenario-warning .sc-title { color:var(--yellow); }
+.scenario-success .sc-title { color:var(--green); }
+
+/* Tables */
+.table { color:var(--text); border-color:var(--border); font-size:.85rem; }
+.table thead th { background:rgba(255,255,255,.05); border-color:var(--border); font-weight:600; color:var(--muted); font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; }
+.table tbody td { border-color:rgba(48,54,61,.6); vertical-align:middle; }
+.table-hover tbody tr:hover { background:rgba(255,255,255,.03); }
+.table tbody tr:last-child td { font-weight:700; background:rgba(255,255,255,.04); }
+.roi-badge { font-size:.78rem; padding:2px 8px; border-radius:20px; font-weight:600; }
+
+/* Stat boxes */
+.stat-box { background:rgba(255,255,255,.04); border:1px solid var(--border); border-radius:10px; padding:1rem 1.2rem; text-align:center; }
+.stat-val { font-size:1.6rem; font-weight:700; }
+.stat-lbl { font-size:.75rem; color:var(--muted); margin-top:2px; }
+
+/* Economics box */
+.econ-box { background:#010409; border:1px solid var(--border); border-radius:10px; padding:1rem 1.4rem; font-size:.83rem; }
+.econ-row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid rgba(48,54,61,.4); }
+.econ-row:last-child { border-bottom:none; font-weight:700; }
+.econ-label { color:var(--muted); }
+.econ-val   { font-family:'JetBrains Mono','Fira Code',monospace; }
+
+/* Assumption box */
+.assumption { background:rgba(88,166,255,.06); border:1px solid rgba(88,166,255,.18); border-radius:10px; padding:1rem 1.4rem; font-size:.83rem; line-height:1.7; }
+.assumption strong { color:var(--blue); }
+.chart-wrap { position:relative; height:260px; }
+</style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark px-3 py-2 mb-4">
+  <a class="navbar-brand fw-bold" href="/"><i class="fas fa-chart-line me-2"></i>ArbitrageBot</a>
+  <div class="d-flex align-items-center gap-3">
+    <a href="/" class="text-decoration-none" style="color:var(--muted);font-size:.85rem;"><i class="fas fa-home me-1"></i>Дашборд</a>
+    <a href="/settings" class="text-decoration-none" style="color:var(--muted);font-size:.85rem;"><i class="fas fa-cog me-1"></i>Настройки</a>
+    <span style="color:var(--muted);font-size:.8rem;">{{ current_user.username }}</span>
+  </div>
+</nav>
+
+<div class="container-xl pb-5">
+
+  <!-- Header -->
+  <div class="mb-4">
+    <h4 class="fw-bold mb-1"><i class="fas fa-calculator me-2" style="color:var(--blue)"></i>Прогноз доходности арбитража</h4>
+    <p style="color:var(--muted);">Стартовый капитал: <strong style="color:var(--text);">${{ "%.2f"|format(start) }}</strong> · Расчёт по реальным параметрам бота (комиссии Kalshi/Polymarket)</p>
+  </div>
+
+  <!-- Fee legend -->
+  <div class="card mb-4 p-3">
+    <div class="row g-3 text-center">
+      <div class="col-md-3">
+        <div class="stat-box">
+          <div class="stat-val" style="color:var(--blue)">{{ kalshi_fee }}%</div>
+          <div class="stat-lbl">Kalshi taker fee<br><span style="color:var(--muted);">(% от выигрыша)</span></div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="stat-box">
+          <div class="stat-val" style="color:var(--blue)">{{ poly_fee }}%</div>
+          <div class="stat-lbl">Polymarket taker fee<br><span style="color:var(--muted);">(% от выигрыша)</span></div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="stat-box">
+          <div class="stat-val" style="color:var(--yellow)">{{ amm_buffer }}%</div>
+          <div class="stat-lbl">AMM slippage buffer<br><span style="color:var(--muted);">(прибавляется к цене Poly)</span></div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="stat-box">
+          <div class="stat-val" style="color:var(--green)">${{ "%.0f"|format(start) }}</div>
+          <div class="stat-lbl">Стартовый капитал<br><span style="color:var(--muted);">(~$5 на каждую ногу)</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chart -->
+  <div class="card mb-4 p-3">
+    <div class="card-header mb-3">
+      <span class="fw-semibold"><i class="fas fa-chart-area me-2"></i>Динамика капитала по сценариям</span>
+    </div>
+    <div class="chart-wrap px-2">
+      <canvas id="growthChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Scenarios -->
+  {% for sc in scenarios %}
+  <div class="scenario-card scenario-{{ sc.color }} mb-4">
+
+    <!-- Title row -->
+    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+      <div>
+        <h5 class="sc-title fw-bold mb-0">
+          <i class="fas fa-{{ sc.icon }} me-2"></i>{{ sc.name }}
+        </h5>
+        <small style="color:var(--muted)">{{ sc.desc }}</small>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <span class="roi-badge bg-{% if sc.color == 'danger' %}danger{% elif sc.color == 'warning' %}warning text-dark{% else %}success{% endif %} bg-opacity-25">
+          ROI {{ sc.annual_roi }}% / год
+        </span>
+        <span class="roi-badge" style="background:rgba(255,255,255,.08);color:var(--muted)">
+          ${{ "%.2f"|format(start) }} → ${{ "%.2f"|format(sc.final_capital) }}
+        </span>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <!-- Economics -->
+      <div class="col-lg-4">
+        <div class="econ-box h-100">
+          <div class="mb-2 fw-semibold" style="color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;">Экономика 1 сделки</div>
+          <div class="econ-row">
+            <span class="econ-label">YES ask (Kalshi)</span>
+            <span class="econ-val">{{ "%.2f"|format(sc.yes_ask) }}</span>
+          </div>
+          <div class="econ-row">
+            <span class="econ-label">NO ask (Polymarket)</span>
+            <span class="econ-val">{{ "%.2f"|format(sc.no_ask) }} (+{{ amm_buffer }}% AMM)</span>
+          </div>
+          <div class="econ-row">
+            <span class="econ-label">Валовый спред</span>
+            <span class="econ-val" style="color:var(--blue)">{{ sc.gross_pct }}%</span>
+          </div>
+          <div class="econ-row">
+            <span class="econ-label">Комиссии (worst-case)</span>
+            <span class="econ-val" style="color:var(--red)">−{{ sc.fee_pct }}%</span>
+          </div>
+          <div class="econ-row">
+            <span class="econ-label">Чистый спред / сделку</span>
+            <span class="econ-val" style="color:var(--green)">{{ sc.net_pct }}%</span>
+          </div>
+          <div class="econ-row mt-1 pt-1">
+            <span class="econ-label">Прибыль с ${{ "%.0f"|format(start) }}/сделку</span>
+            <span class="econ-val" style="color:var(--green)">${{ "%.3f"|format(start * sc.net_pct / 100) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Frequency -->
+      <div class="col-lg-4">
+        <div class="econ-box h-100">
+          <div class="mb-2 fw-semibold" style="color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;">Частота торговли</div>
+          <div class="econ-row">
+            <span class="econ-label">Сделок в год</span>
+            <span class="econ-val">{{ sc.trades_per_year }}</span>
+          </div>
+          <div class="econ-row">
+            <span class="econ-label">Сделок в месяц</span>
+            <span class="econ-val">{{ "%.1f"|format(sc.trades_per_year / 12) }}</span>
+          </div>
+          <div class="econ-row">
+            <span class="econ-label">Средний срок позиции</span>
+            <span class="econ-val">{{ sc.avg_hold_days }} дней</span>
+          </div>
+          <div class="econ-row">
+            <span class="econ-label">Успешное исполнение</span>
+            <span class="econ-val">{{ (sc.success_rate * 100)|int }}%</span>
+          </div>
+          <div class="econ-row">
+            <span class="econ-label">Итог: вал. прибыль / год</span>
+            <span class="econ-val" style="color:var(--blue)">${{ "%.2f"|format(sc.total_gross) }}</span>
+          </div>
+          <div class="econ-row">
+            <span class="econ-label">Итог: комиссии / год</span>
+            <span class="econ-val" style="color:var(--red)">−${{ "%.2f"|format(sc.total_fees) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary -->
+      <div class="col-lg-4">
+        <div class="row g-2">
+          <div class="col-6">
+            <div class="stat-box">
+              <div class="stat-val {% if sc.color == 'danger' %}text-danger{% elif sc.color == 'warning' %}text-warning{% else %}text-success{% endif %}">
+                ${{ "%.2f"|format(sc.final_capital) }}
+              </div>
+              <div class="stat-lbl">Капитал через год</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="stat-box">
+              <div class="stat-val {% if sc.color == 'danger' %}text-danger{% elif sc.color == 'warning' %}text-warning{% else %}text-success{% endif %}">
+                +${{ "%.2f"|format(sc.total_profit) }}
+              </div>
+              <div class="stat-lbl">Чистая прибыль</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="stat-box">
+              <div class="stat-val {% if sc.color == 'danger' %}text-danger{% elif sc.color == 'warning' %}text-warning{% else %}text-success{% endif %}">
+                {{ sc.annual_roi }}%
+              </div>
+              <div class="stat-lbl">Годовой ROI</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="stat-box">
+              <div class="stat-val" style="color:var(--muted)">
+                ${{ "%.2f"|format(sc.total_fees) }}
+              </div>
+              <div class="stat-lbl">Уплачено комиссий</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Monthly table -->
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0 align-middle">
+        <thead>
+          <tr>
+            <th>Месяц</th>
+            <th class="text-end">Капитал нач.</th>
+            <th class="text-end">Сделок</th>
+            <th class="text-end">Успешных</th>
+            <th class="text-end">Вал. доход</th>
+            <th class="text-end">Комиссии</th>
+            <th class="text-end">Чист. доход</th>
+            <th class="text-end">Капитал кон.</th>
+            <th class="text-end">ROI накопл.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set capital_start = [start] %}
+          {% for row in sc.months %}
+          <tr>
+            <td><strong>{{ row.month }}</strong></td>
+            <td class="text-end font-monospace">${{ "%.3f"|format(capital_start[0]) }}</td>
+            <td class="text-end">{{ row.trades }}</td>
+            <td class="text-end">{{ "%.1f"|format(row.successful) }}</td>
+            <td class="text-end font-monospace" style="color:var(--blue)">+${{ "%.3f"|format(row.gross) }}</td>
+            <td class="text-end font-monospace" style="color:var(--red)">−${{ "%.3f"|format(row.fees) }}</td>
+            <td class="text-end font-monospace" style="color:var(--green)">+${{ "%.3f"|format(row.net) }}</td>
+            <td class="text-end font-monospace fw-semibold">${{ "%.3f"|format(row.capital) }}</td>
+            <td class="text-end">
+              <span class="roi-badge
+                {% if sc.color == 'danger' %}bg-danger text-danger
+                {% elif sc.color == 'warning' %}bg-warning text-warning
+                {% else %}bg-success text-success{% endif %} bg-opacity-20">
+                +{{ row.roi }}%
+              </span>
+            </td>
+          </tr>
+          {% if capital_start.append(row.capital) %}{% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+  {% endfor %}
+
+  <!-- Assumptions & warnings -->
+  <div class="row g-3 mb-4">
+    <div class="col-lg-6">
+      <div class="assumption">
+        <strong>Как считаются комиссии</strong><br>
+        Бот использует формулу worst-case из кода <code>arbitrage_detector.py</code>:<br>
+        <code>fee = max(Kalshi_fee × (1 − YES_ask), Poly_fee × (1 − NO_ask_eff))</code><br>
+        Kalshi берёт {{ kalshi_fee }}% от суммы выигрыша (не от номинала).
+        Polymarket {{ poly_fee }}%. К цене Poly прибавляется {{ amm_buffer }}% AMM-буфер на проскальзывание.
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="assumption" style="background:rgba(248,81,73,.06);border-color:rgba(248,81,73,.2);">
+        <strong style="color:var(--red)">Важные оговорки</strong><br>
+        · Расчёт <em>теоретический</em> — реальные результаты зависят от рынка.<br>
+        · При $10 минимальная нога ≈$5. Некоторые рынки требуют бо́льшего объёма.<br>
+        · Позиции <em>заморожены</em> до резолюции (7–60 дней): capital velocity ограничена.<br>
+        · Для масштабируемого дохода рекомендуется $100–$1000+.
+      </div>
+    </div>
+  </div>
+
+  <!-- Scale table -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <span class="fw-semibold"><i class="fas fa-expand-arrows-alt me-2"></i>Как масштабируется результат — реалистичный сценарий</span>
+    </div>
+    <div class="p-3 table-responsive">
+      <table class="table table-sm table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Стартовый капитал</th>
+            <th class="text-end">Прибыль/год</th>
+            <th class="text-end">ROI</th>
+            <th class="text-end">Капитал через год</th>
+            <th class="text-end">Капитал через 3 года</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set real = scenarios[1] %}
+          {% set monthly_r = real.annual_roi / 100 %}
+          {% for cap in [10, 50, 100, 500, 1000, 5000] %}
+          {% set profit_1y = cap * real.annual_roi / 100 %}
+          {% set end_1y    = cap + profit_1y %}
+          {% set end_3y    = cap * ((1 + real.annual_roi/100) ** 3) %}
+          <tr {% if cap == 10 %}style="background:rgba(88,166,255,.05)"{% endif %}>
+            <td class="font-monospace">
+              ${{ "{:,}".format(cap) }}
+              {% if cap == 10 %}<span class="badge bg-primary bg-opacity-25 ms-2" style="font-size:.7rem">текущий</span>{% endif %}
+            </td>
+            <td class="text-end font-monospace" style="color:var(--green)">+${{ "{:,.2f}".format(profit_1y) }}</td>
+            <td class="text-end"><span class="roi-badge bg-warning text-warning bg-opacity-20">{{ real.annual_roi }}%</span></td>
+            <td class="text-end font-monospace">${{ "{:,.2f}".format(end_1y) }}</td>
+            <td class="text-end font-monospace" style="color:var(--blue)">${{ "{:,.0f}".format(end_3y) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+const months = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+const scenarios = {{ scenarios | tojson }};
+const start = {{ start }};
+
+const datasets = scenarios.map((sc, i) => {
+  const colors = ['#f85149','#d29922','#3fb950'];
+  const data   = [start].concat(sc.months.map(m => m.capital));
+  return {
+    label: sc.name,
+    data,
+    borderColor: colors[i],
+    backgroundColor: colors[i] + '22',
+    fill: true,
+    tension: 0.4,
+    pointRadius: 4,
+    pointHoverRadius: 6,
+    borderWidth: 2,
+  };
+});
+
+new Chart(document.getElementById('growthChart'), {
+  type: 'line',
+  data: { labels: ['Старт'].concat(months), datasets },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { labels: { color: '#8b949e', font: { size: 12 } } },
+      tooltip: {
+        backgroundColor: '#161b22',
+        borderColor: '#30363d',
+        borderWidth: 1,
+        titleColor: '#e6edf3',
+        bodyColor: '#8b949e',
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: $${ctx.parsed.y.toFixed(3)}`
+        }
+      }
+    },
+    scales: {
+      x: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+      y: {
+        ticks: { color: '#8b949e', callback: v => '$' + v.toFixed(2) },
+        grid: { color: '#21262d' }
+      }
+    }
+  }
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

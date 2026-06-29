@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backtest — ArbitrageBot</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e; --green:#3fb950; --red:#f85149; --yellow:#d29922; --blue:#58a6ff; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; }
+  .navbar { background:var(--card)!important; border-bottom:1px solid var(--border); }
+  .form-control,.form-select,.form-control:focus,.form-select:focus {
+    background:#0d1117; border-color:var(--border); color:var(--text);
+  }
+  .form-control:focus,.form-select:focus { border-color:var(--blue); box-shadow:none; }
+  .btn-run { background:rgba(63,185,80,.15); color:var(--green); border:1px solid rgba(63,185,80,.4); font-weight:600; }
+  .btn-run:hover { background:rgba(63,185,80,.25); color:var(--green); }
+  .btn-mode { background:transparent; border:1px solid var(--border); color:var(--muted); transition:.15s; }
+  .btn-mode.active,.btn-mode:hover { background:rgba(88,166,255,.12); border-color:var(--blue); color:var(--blue); }
+  .stat-card { text-align:center; padding:18px 12px; }
+  .stat-val { font-size:1.7rem; font-weight:700; }
+  .stat-label { color:var(--muted); font-size:.79rem; margin-top:3px; }
+  table { font-size:.84rem; }
+  thead th { color:var(--muted); font-weight:500; border-color:var(--border); font-size:.79rem; text-transform:uppercase; letter-spacing:.05em; }
+  tbody td { border-color:#21262d; vertical-align:middle; }
+  tbody tr:hover { background:rgba(255,255,255,.03); }
+  .venue-badge { padding:1px 6px; border-radius:4px; font-size:.73rem; font-weight:600; }
+  .venue-KALSHI     { background:rgba(88,166,255,.15); color:var(--blue); }
+  .venue-POLYMARKET { background:rgba(63,185,80,.1);  color:#7ee787; }
+  .title-cell { max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pct-badge { padding:2px 8px; border-radius:4px; font-weight:600; font-size:.8rem; }
+  .pct-good { background:rgba(63,185,80,.15); color:var(--green); }
+  .pct-ok   { background:rgba(88,166,255,.1);  color:var(--blue); }
+  .mode-tabs { display:flex; gap:8px; margin-bottom:1.5rem; }
+  .spinner-border { width:1.2rem; height:1.2rem; border-width:.15em; }
+  .alert-danger { background:rgba(248,81,73,.12); border-color:rgba(248,81,73,.3); color:var(--red); }
+  .result-section { animation: fadeIn .3s ease; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .info-box { background:#010409; border:1px solid var(--border); border-radius:8px; padding:12px 16px; font-size:.85rem; color:var(--muted); }
+  .csv-fmt code { background:#0d1117; border:1px solid var(--border); border-radius:4px; padding:2px 6px; font-size:.8rem; color:var(--blue); }
+</style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg mb-4">
+  <div class="container-fluid px-4">
+    <span class="navbar-brand fw-bold text-white">⚡ Arbitrage Bot</span>
+    <div class="d-flex gap-2 align-items-center">
+      <a href="/" class="btn btn-sm btn-outline-secondary px-3"><i class="fas fa-home me-1"></i>Dashboard</a>
+      <a href="/pnl" class="btn btn-sm btn-outline-secondary px-3"><i class="fas fa-chart-line me-1"></i>P&amp;L</a>
+      <a href="/opportunities" class="btn btn-sm btn-outline-secondary px-3"><i class="fas fa-history me-1"></i>История</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid px-4" style="max-width:1100px;">
+
+  <h4 class="mb-1"><i class="fas fa-flask me-2" style="color:var(--blue);"></i>Backtesting</h4>
+  <p style="color:var(--muted); font-size:.9rem; margin-bottom:1.5rem;">
+    Симуляция торговли без реальных сделок. Live snapshot — текущие котировки. CSV replay — исторические данные.
+  </p>
+
+  {% if error %}
+  <div class="alert alert-danger mb-4"><i class="fas fa-exclamation-circle me-2"></i>{{ error }}</div>
+  {% endif %}
+
+  <!-- Form -->
+  <div class="card p-4 mb-4">
+    <form method="post" action="/backtest" enctype="multipart/form-data" id="btForm">
+
+      <!-- Mode tabs -->
+      <div class="mode-tabs">
+        <button type="button" class="btn btn-mode {{ 'active' if not result or result.mode=='live' else '' }}"
+                onclick="setMode('live')">
+          <i class="fas fa-broadcast-tower me-2"></i>Live snapshot
+        </button>
+        <button type="button" class="btn btn-mode {{ 'active' if result and result.mode=='csv' else '' }}"
+                onclick="setMode('csv')">
+          <i class="fas fa-file-csv me-2"></i>CSV replay
+        </button>
+      </div>
+
+      <input type="hidden" name="mode" id="modeInput" value="{{ result.mode if result else 'live' }}">
+
+      <!-- Live mode info -->
+      <div id="liveSection" style="{{ 'display:none' if result and result.mode=='csv' else '' }}">
+        <div class="info-box mb-3">
+          <i class="fas fa-info-circle me-2" style="color:var(--blue);"></i>
+          Запрашивает текущие котировки со всех настроенных бирж и прогоняет одну итерацию детектора без совершения сделок.
+        </div>
+      </div>
+
+      <!-- CSV mode -->
+      <div id="csvSection" style="{{ '' if result and result.mode=='csv' else 'display:none' }}">
+        <div class="mb-3">
+          <label class="form-label" style="color:var(--muted);font-size:.85rem;">CSV-файл с историческими котировками</label>
+          <input type="file" name="csv_file" id="csvFile" class="form-control" accept=".csv">
+        </div>
+        <div class="info-box csv-fmt mb-3">
+          <div class="mb-1" style="color:var(--text);font-size:.82rem;font-weight:600;">Формат CSV:</div>
+          <div>
+            <code>timestamp_utc</code>, <code>venue</code>, <code>market_id</code>,
+            <code>title</code>, <code>yes_best_ask</code>, <code>no_best_ask</code>
+          </div>
+          <div class="mt-1" style="font-size:.79rem;">venue: <code>KALSHI</code> или <code>POLYMARKET</code></div>
+        </div>
+      </div>
+
+      <!-- Stake -->
+      <div class="row g-3 align-items-end">
+        <div class="col-auto">
+          <label class="form-label" style="color:var(--muted);font-size:.85rem;">Ставка на сделку ($)</label>
+          <input type="number" name="stake" class="form-control" style="width:130px;"
+                 min="1" max="100000" step="1" value="10">
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-run px-4" id="runBtn">
+            <span id="runLabel"><i class="fas fa-play me-2"></i>Запустить</span>
+            <span id="runSpinner" style="display:none;">
+              <span class="spinner-border me-2"></span>Выполняется…
+            </span>
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {% if result %}
+  <div class="result-section">
+    <!-- Summary stats -->
+    <div class="row g-3 mb-4">
+      {% set s = result.summary %}
+      <div class="col-6 col-md-3">
+        <div class="card stat-card">
+          <div class="stat-val" style="color:var(--blue);">{{ s.total_opportunities }}</div>
+          <div class="stat-label">Возможностей</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-card">
+          <div class="stat-val" style="color:var(--green);">{{ s.total_trades_simulated }}</div>
+          <div class="stat-label">Симул. сделок</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-card">
+          <div class="stat-val" style="color:var(--yellow);">{{ '%.2f'|format(s.avg_spread_pct) }}%</div>
+          <div class="stat-label">Средний спред</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-card">
+          <div class="stat-val" style="color:{{ 'var(--green)' if s.total_pnl_usd >= 0 else 'var(--red)' }};">
+            {{ ('+' if s.total_pnl_usd >= 0 else '') }}${{ '%.4f'|format(s.total_pnl_usd) }}
+          </div>
+          <div class="stat-label">Теор. P&amp;L</div>
+        </div>
+      </div>
+    </div>
+
+    {% if s.start_ts %}
+    <div style="color:var(--muted);font-size:.83rem;margin-bottom:1rem;">
+      <i class="fas fa-clock me-1"></i>
+      {{ s.start_ts[:19].replace('T',' ') if s.start_ts else '' }}
+      {% if s.end_ts and s.end_ts != s.start_ts %} → {{ s.end_ts[:19].replace('T',' ') }}{% endif %}
+      · Режим: <strong style="color:var(--text);">{{ 'Live snapshot' if result.mode=='live' else 'CSV replay' }}</strong>
+    </div>
+    {% endif %}
+
+    <!-- Opportunities table -->
+    {% if result.opportunities %}
+    <div class="card">
+      <div class="px-4 py-3" style="border-bottom:1px solid var(--border);">
+        <span style="color:var(--muted);font-size:.87rem;">
+          <i class="fas fa-list me-1"></i>Топ возможности ({{ result.opportunities|length }})
+        </span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-dark mb-0">
+          <thead>
+            <tr>
+              <th style="width:120px;">Время</th>
+              <th>Рынок</th>
+              <th style="width:105px;">YES биржа</th>
+              <th style="width:105px;">NO биржа</th>
+              <th style="width:75px;">YES $</th>
+              <th style="width:75px;">NO $</th>
+              <th style="width:85px;">Спред</th>
+              <th style="width:90px;">Теор. P&L</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for o in result.opportunities|sort(attribute='profit_pct',reverse=True) %}
+            <tr>
+              <td style="font-family:monospace;font-size:.78rem;color:var(--muted);">
+                {{ o.ts[:10] if o.ts else '—' }}
+              </td>
+              <td class="title-cell" title="{{ o.title }}">{{ o.title }}</td>
+              <td><span class="venue-badge venue-{{ o.yes_venue }}">{{ o.yes_venue }}</span></td>
+              <td><span class="venue-badge venue-{{ o.no_venue }}">{{ o.no_venue }}</span></td>
+              <td style="font-family:monospace;">{{ '%.3f'|format(o.yes_price) }}</td>
+              <td style="font-family:monospace;">{{ '%.3f'|format(o.no_price) }}</td>
+              <td>
+                <span class="pct-badge {{ 'pct-good' if o.profit_pct >= 3 else 'pct-ok' }}">
+                  +{{ '%.2f'|format(o.profit_pct) }}%
+                </span>
+              </td>
+              <td style="color:var(--green); font-family:monospace; font-weight:600;">
+                +${{ '%.4f'|format(o.simulated_pnl) }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="card p-5 text-center" style="color:var(--muted);">
+      <i class="fas fa-search fa-2x mb-3" style="opacity:.4;"></i>
+      <div>Арбитражных возможностей не найдено</div>
+      <div style="font-size:.84rem;margin-top:.4rem;">Попробуй снизить MIN_PROFIT_PERCENT в настройках</div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function setMode(m) {
+  document.getElementById('modeInput').value = m;
+  document.getElementById('liveSection').style.display = m === 'live' ? '' : 'none';
+  document.getElementById('csvSection').style.display  = m === 'csv'  ? '' : 'none';
+  document.querySelectorAll('.btn-mode').forEach((b, i) => {
+    b.classList.toggle('active', (i === 0 && m === 'live') || (i === 1 && m === 'csv'));
+  });
+}
+
+document.getElementById('btForm').addEventListener('submit', function() {
+  document.getElementById('runLabel').style.display  = 'none';
+  document.getElementById('runSpinner').style.display = '';
+  document.getElementById('runBtn').disabled = true;
+});
+</script>
+</body>
+</html>

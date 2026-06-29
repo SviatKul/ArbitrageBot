@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Двухфакторная аутентификация — ArbitrageBot</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --border:#30363d; --green:#3fb950; --muted:#8b949e; }
+  body { background: var(--bg); color: #e6edf3; min-height: 100vh;
+         display: flex; align-items: center; justify-content: center; font-family: system-ui, sans-serif; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; width: 380px; }
+  .logo { font-size: 1.5rem; font-weight: 700; color: var(--green); }
+  .form-control { background: #0d1117; border-color: var(--border); color: #e6edf3; font-size: 1.5rem;
+                  text-align: center; letter-spacing: .3em; }
+  .form-control:focus { background: #0d1117; border-color: var(--green); color: #e6edf3; box-shadow: 0 0 0 3px rgba(63,185,80,.15); }
+  .btn-primary { background: var(--green); border: none; color: #0d1117; font-weight: 600; }
+  .btn-primary:hover { background: #46d160; color: #0d1117; }
+  .alert-danger { background: rgba(248,81,73,.15); border-color: #f85149; color: #f85149; }
+  .icon-shield { font-size: 2.5rem; color: var(--green); }
+  .back-link { color: var(--muted); font-size:.85rem; text-decoration: none; }
+  .back-link:hover { color: #e6edf3; }
+</style>
+</head>
+<body>
+<div class="card p-4">
+  <div class="text-center mb-4">
+    <div class="icon-shield mb-2">🔐</div>
+    <div class="logo mb-1">⚡ ArbitrageBot</div>
+    <div style="color:var(--muted); font-size:.9rem;">Двухфакторная аутентификация</div>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ 'danger' if cat == 'error' else cat }} py-2 mb-3" style="font-size:.9rem;">{{ msg }}</div>
+  {% endfor %}
+  {% endwith %}
+
+  <p style="color:var(--muted); font-size:.9rem; text-align:center; margin-bottom:1.2rem;">
+    Привет, <strong style="color:#e6edf3;">{{ username }}</strong>!<br>
+    Введи 6-значный код из Google Authenticator.
+  </p>
+
+  <form method="post" action="/2fa/verify" id="codeForm">
+    <div class="mb-4">
+      <input type="text" name="code" id="codeInput" class="form-control"
+             placeholder="000000" maxlength="6" pattern="[0-9]{6}"
+             inputmode="numeric" autocomplete="one-time-code"
+             required autofocus>
+      <div style="color:var(--muted); font-size:.8rem; margin-top:.5rem; text-align:center;">
+        Код обновляется каждые 30 секунд
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary w-100 mb-3">Подтвердить</button>
+  </form>
+
+  <div class="text-center">
+    <a href="/login" class="back-link">← Вернуться к входу</a>
+  </div>
+</div>
+
+<script>
+// Auto-submit when 6 digits entered
+document.getElementById('codeInput').addEventListener('input', function() {
+  this.value = this.value.replace(/\D/g, '');
+  if (this.value.length === 6) {
+    document.getElementById('codeForm').submit();
+  }
+});
+</script>
+</body>
+</html>

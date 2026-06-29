@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P&L — ArbitrageBot</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e; --green:#3fb950; --red:#f85149; --yellow:#d29922; --blue:#58a6ff; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; }
+  .navbar { background:var(--card)!important; border-bottom:1px solid var(--border); }
+  .stat-card { text-align:center; padding:20px 16px; }
+  .stat-val { font-size:1.9rem; font-weight:700; }
+  .stat-label { color:var(--muted); font-size:.8rem; margin-top:4px; }
+  table { font-size:.84rem; }
+  thead th { color:var(--muted); font-weight:500; border-color:var(--border); font-size:.79rem; text-transform:uppercase; letter-spacing:.05em; }
+  tbody td { border-color:#21262d; vertical-align:middle; }
+  tbody tr:hover { background:rgba(255,255,255,.03); }
+  .status-badge { padding:2px 8px; border-radius:4px; font-size:.74rem; font-weight:600; }
+  .s-executed { background:rgba(63,185,80,.15);  color:var(--green); }
+  .s-found    { background:rgba(88,166,255,.1);  color:var(--blue); }
+  .s-failed   { background:rgba(248,81,73,.15);  color:var(--red); }
+  .s-hedged   { background:rgba(210,153,34,.15); color:var(--yellow); }
+  .s-skipped  { background:rgba(139,148,158,.1); color:var(--muted); }
+  .venue-badge { padding:1px 6px; border-radius:4px; font-size:.73rem; font-weight:600; }
+  .venue-KALSHI     { background:rgba(88,166,255,.15); color:var(--blue); }
+  .venue-POLYMARKET { background:rgba(63,185,80,.1);  color:#7ee787; }
+  .chart-wrap { height:220px; }
+  .title-cell { max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .empty-state { text-align:center; padding:60px 20px; color:var(--muted); }
+  .btn-dl { background:rgba(88,166,255,.12); color:var(--blue); border:1px solid rgba(88,166,255,.35); }
+  .btn-dl:hover { background:rgba(88,166,255,.22); color:var(--blue); }
+</style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg mb-4">
+  <div class="container-fluid px-4">
+    <span class="navbar-brand fw-bold text-white">⚡ Arbitrage Bot</span>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+      <a href="/" class="btn btn-sm btn-outline-secondary px-3"><i class="fas fa-home me-1"></i>Dashboard</a>
+      <a href="/opportunities" class="btn btn-sm btn-outline-secondary px-3"><i class="fas fa-history me-1"></i>Возможности</a>
+      <a href="/backtest" class="btn btn-sm btn-outline-secondary px-3"><i class="fas fa-flask me-1"></i>Backtest</a>
+      <a href="/pnl/download" class="btn btn-sm btn-dl px-3"><i class="fas fa-download me-1"></i>CSV</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid px-4" style="max-width:1400px;">
+
+  <h4 class="mb-4"><i class="fas fa-chart-line me-2" style="color:var(--green);"></i>P&amp;L и история сделок</h4>
+
+  <!-- Stats -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card stat-card">
+        <div class="stat-val" style="color:var(--blue);">{{ summary.total }}</div>
+        <div class="stat-label">Всего записей</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card">
+        <div class="stat-val" style="color:var(--green);">{{ summary.executed }}</div>
+        <div class="stat-label">Исполнено</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card">
+        <div class="stat-val" style="color:var(--yellow);">{{ '%.2f'|format(summary.avg_spread_pct) }}%</div>
+        <div class="stat-label">Средний спред</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card">
+        <div class="stat-val" style="color:var(--green);">{{ '%.2f'|format(summary.max_spread_pct) }}%</div>
+        <div class="stat-label">Макс. спред</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- P&L Chart -->
+  {% if pnl_history %}
+  <div class="card p-4 mb-4">
+    <h6 class="mb-3" style="color:var(--muted);">Накопленный P&amp;L по дням (USD)</h6>
+    <div class="chart-wrap">
+      <canvas id="pnlChart"></canvas>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Trades table -->
+  <div class="card">
+    {% if trades %}
+    <div class="d-flex justify-content-between align-items-center px-4 py-3" style="border-bottom:1px solid var(--border);">
+      <span style="color:var(--muted); font-size:.87rem;">
+        <i class="fas fa-table me-1"></i>Последние {{ trades|length }} сделок (из trades.csv)
+      </span>
+      <div class="d-flex gap-2 align-items-center">
+        <input type="text" id="searchInput" class="form-control form-control-sm"
+               style="width:200px; background:#0d1117; border-color:var(--border); color:var(--text);"
+               placeholder="Поиск по рынку…" oninput="filterTable()">
+        <select id="statusFilter" class="form-select form-select-sm"
+                style="width:130px; background:#0d1117; border-color:var(--border); color:var(--text);" onchange="filterTable()">
+          <option value="">Все статусы</option>
+          <option value="executed">executed</option>
+          <option value="found">found</option>
+          <option value="failed">failed</option>
+          <option value="hedged">hedged</option>
+          <option value="skipped">skipped</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dark mb-0" id="tradesTable">
+        <thead>
+          <tr>
+            <th style="width:160px;">Время (UTC)</th>
+            <th>Рынок</th>
+            <th style="width:105px;">YES</th>
+            <th style="width:105px;">NO</th>
+            <th style="width:75px;">YES $</th>
+            <th style="width:75px;">NO $</th>
+            <th style="width:80px;">Спред</th>
+            <th style="width:80px;">Cost $</th>
+            <th style="width:85px;">Статус</th>
+            <th>Заметки</th>
+          </tr>
+        </thead>
+        <tbody id="tradesBody">
+          {% for t in trades|reverse %}
+          <tr data-market="{{ t.market|lower }}" data-status="{{ t.status|lower }}">
+            <td style="font-family:monospace;font-size:.78rem;color:var(--muted);white-space:nowrap;">
+              {{ t.timestamp_utc[:19].replace('T',' ') if t.timestamp_utc else '—' }}
+            </td>
+            <td class="title-cell" title="{{ t.market }}">{{ t.market }}</td>
+            <td><span class="venue-badge venue-{{ t.yes_venue }}">{{ t.yes_venue }}</span></td>
+            <td><span class="venue-badge venue-{{ t.no_venue }}">{{ t.no_venue }}</span></td>
+            <td style="font-family:monospace;">{{ t.yes_price or '—' }}</td>
+            <td style="font-family:monospace;">{{ t.no_price or '—' }}</td>
+            <td>
+              {% if t.spread_pct %}
+              <span style="color:var(--green); font-weight:600;">+{{ t.spread_pct }}%</span>
+              {% else %}—{% endif %}
+            </td>
+            <td style="font-family:monospace;">
+              {% if t.cost_usd and t.cost_usd != '0.00' %}${{ t.cost_usd }}{% else %}—{% endif %}
+            </td>
+            <td>
+              <span class="status-badge s-{{ t.status|lower }}">{{ t.status }}</span>
+            </td>
+            <td style="color:var(--muted);font-size:.8rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                title="{{ t.notes }}">{{ t.notes or '' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="fas fa-chart-line fa-3x mb-3" style="opacity:.3;"></i>
+      <div>Сделок пока нет</div>
+      <div style="font-size:.85rem; margin-top:.5rem;">Данные появятся когда бот найдёт первые возможности</div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% if pnl_history %}
+<script>
+const pnlData = {{ pnl_history | tojson }};
+const labels = pnlData.map(d => d.date);
+const values = pnlData.map(d => d.pnl);
+
+// Build cumulative array
+const cumulative = [];
+let sum = 0;
+values.forEach(v => { sum += v; cumulative.push(parseFloat(sum.toFixed(4))); });
+
+const ctx = document.getElementById('pnlChart').getContext('2d');
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [{
+      label: 'Накопленный P&L ($)',
+      data: cumulative,
+      borderColor: '#3fb950',
+      backgroundColor: 'rgba(63,185,80,.08)',
+      borderWidth: 2,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      fill: true,
+      tension: 0.3,
+    }],
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: '#8b949e', boxWidth: 12 } } },
+    scales: {
+      x: { ticks: { color: '#8b949e', maxRotation: 45, font:{size:10} }, grid: { color: '#21262d' } },
+      y: { ticks: { color: '#8b949e', callback: v => '$' + v.toFixed(2) }, grid: { color: '#21262d' } },
+    },
+  },
+});
+</script>
+{% endif %}
+<script>
+function filterTable() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const status = document.getElementById('statusFilter').value.toLowerCase();
+  document.querySelectorAll('#tradesBody tr').forEach(r => {
+    const mMatch = !search || r.dataset.market.includes(search);
+    const sMatch = !status || r.dataset.status === status;
+    r.style.display = (mMatch && sMatch) ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>

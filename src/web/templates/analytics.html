@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Аналитика — ArbitrageBot</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--green:#3fb950;--red:#f85149;--yellow:#d29922;--blue:#58a6ff;}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;}
+  .navbar{background:var(--card)!important;border-bottom:1px solid var(--border);}
+  .stat-card{text-align:center;padding:18px 12px;}
+  .stat-val{font-size:1.8rem;font-weight:700;}
+  .stat-label{color:var(--muted);font-size:.79rem;margin-top:3px;}
+  .section-title{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:1rem;}
+  table{font-size:.84rem;}
+  thead th{color:var(--muted);font-weight:500;border-color:var(--border);font-size:.79rem;text-transform:uppercase;letter-spacing:.05em;}
+  tbody td{border-color:#21262d;vertical-align:middle;}
+  tbody tr:hover{background:rgba(255,255,255,.03);}
+  .venue-badge{padding:1px 6px;border-radius:4px;font-size:.73rem;font-weight:600;}
+  .venue-KALSHI{background:rgba(88,166,255,.15);color:var(--blue);}
+  .venue-POLYMARKET{background:rgba(63,185,80,.1);color:#7ee787;}
+  .chart-wrap{height:220px;}
+  .heatmap-wrap{overflow-x:auto;}
+  .hm-cell{width:28px;height:28px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:.65rem;cursor:default;transition:.1s;}
+  .title-cell{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .pct-val{color:var(--green);font-weight:600;font-family:monospace;}
+  .empty-state{text-align:center;padding:50px 20px;color:var(--muted);}
+  .rank-num{color:var(--muted);font-size:.8rem;width:24px;text-align:right;flex-shrink:0;}
+</style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg mb-4">
+  <div class="container-fluid px-4">
+    <span class="navbar-brand fw-bold text-white">⚡ Arbitrage Bot</span>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="/" class="btn btn-sm btn-outline-secondary px-3"><i class="fas fa-home me-1"></i>Dashboard</a>
+      <a href="/opportunities" class="btn btn-sm btn-outline-secondary px-3"><i class="fas fa-history me-1"></i>История</a>
+      <a href="/pnl" class="btn btn-sm btn-outline-secondary px-3"><i class="fas fa-chart-line me-1"></i>P&amp;L</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid px-4" style="max-width:1300px;">
+  <h4 class="mb-4"><i class="fas fa-chart-bar me-2" style="color:var(--yellow);"></i>Аналитика арбитража</h4>
+
+  <!-- Summary stats -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-2"><div class="card stat-card"><div class="stat-val" style="color:var(--blue);">{{ stats.total }}</div><div class="stat-label">Всего</div></div></div>
+    <div class="col-6 col-md-2"><div class="card stat-card"><div class="stat-val" style="color:var(--green);">{{ stats.executed }}</div><div class="stat-label">Исполнено</div></div></div>
+    <div class="col-6 col-md-2"><div class="card stat-card"><div class="stat-val" style="color:var(--muted);">{{ stats.missed }}</div><div class="stat-label">Пропущено</div></div></div>
+    <div class="col-6 col-md-2"><div class="card stat-card"><div class="stat-val" style="color:var(--yellow);">{{ stats.avg_pct }}%</div><div class="stat-label">Средний спред</div></div></div>
+    <div class="col-6 col-md-2"><div class="card stat-card"><div class="stat-val" style="color:var(--green);">{{ stats.best_pct }}%</div><div class="stat-label">Лучший спред</div></div></div>
+    <div class="col-6 col-md-2"><div class="card stat-card"><div class="stat-val" style="color:var(--blue);">{{ stats.today }}</div><div class="stat-label">Сегодня</div></div></div>
+  </div>
+
+  {% if not stats.total %}
+  <div class="card p-5 empty-state">
+    <i class="fas fa-chart-bar fa-3x mb-3" style="opacity:.3;"></i>
+    <div>Данных пока нет</div>
+    <div style="font-size:.85rem;margin-top:.5rem;">Запусти бота — аналитика появится автоматически</div>
+  </div>
+  {% else %}
+
+  <div class="row g-4">
+    <!-- Best pairs -->
+    <div class="col-12 col-lg-6">
+      <div class="card p-4 h-100">
+        <div class="section-title"><i class="fas fa-trophy me-1"></i>Лучшие пары рынков</div>
+        {% if best_pairs %}
+        <div class="table-responsive">
+          <table class="table table-dark mb-0">
+            <thead><tr>
+              <th style="width:28px;">#</th>
+              <th>Рынок</th>
+              <th style="width:90px;">YES→NO</th>
+              <th style="width:60px;">Кол-во</th>
+              <th style="width:75px;">Ср. %</th>
+              <th style="width:75px;">Макс. %</th>
+            </tr></thead>
+            <tbody>
+              {% for i, p in best_pairs | enumerate %}
+              <tr>
+                <td style="color:var(--muted);font-size:.8rem;">{{ i+1 }}</td>
+                <td class="title-cell" title="{{ p.title }}">{{ p.title }}</td>
+                <td>
+                  <span class="venue-badge venue-{{ p.yes_venue }}" style="font-size:.68rem;">{{ p.yes_venue[:4] }}</span>
+                  <i class="fas fa-arrow-right" style="color:var(--muted);font-size:.6rem;margin:0 2px;"></i>
+                  <span class="venue-badge venue-{{ p.no_venue }}" style="font-size:.68rem;">{{ p.no_venue[:4] }}</span>
+                </td>
+                <td style="color:var(--muted);">{{ p.count }}</td>
+                <td class="pct-val">+{{ '%.2f'|format(p.avg_pct) }}%</td>
+                <td style="color:var(--yellow);font-family:monospace;font-weight:600;">+{{ '%.2f'|format(p.max_pct) }}%</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty-state py-4">Нет данных</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Spread distribution -->
+    <div class="col-12 col-lg-6">
+      <div class="card p-4 h-100">
+        <div class="section-title"><i class="fas fa-chart-bar me-1"></i>Распределение спредов</div>
+        {% if distribution %}
+        <div class="chart-wrap">
+          <canvas id="distChart"></canvas>
+        </div>
+        <div class="mt-3">
+          <table class="table table-dark table-sm mb-0">
+            <thead><tr>
+              <th>Диапазон</th>
+              <th style="width:80px;">Количество</th>
+              <th style="width:80px;">Ср. спред</th>
+            </tr></thead>
+            <tbody>
+              {% set bucket_order = ['0–1%','1–2%','2–3%','3–5%','5–10%','10%+'] %}
+              {% for bkt in bucket_order %}
+                {% for d in distribution if d.bucket == bkt %}
+                <tr>
+                  <td>{{ d.bucket }}</td>
+                  <td style="color:var(--blue);">{{ d.count }}</td>
+                  <td class="pct-val">+{{ '%.2f'|format(d.avg_pct) }}%</td>
+                </tr>
+                {% endfor %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty-state py-4">Нет данных</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Hourly heatmap -->
+    <div class="col-12">
+      <div class="card p-4">
+        <div class="section-title"><i class="fas fa-clock me-1"></i>Активность по часам UTC (тепловая карта)</div>
+        {% if heatmap %}
+        <div class="heatmap-wrap">
+          <canvas id="heatmapChart" height="180"></canvas>
+        </div>
+        {% else %}
+        <div class="empty-state py-4">Нет данных</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Calendar heatmap -->
+    <div class="col-12">
+      <div class="card p-4">
+        <div class="section-title"><i class="fas fa-calendar-alt me-1"></i>Активность по дням (за год)</div>
+        {% if calendar %}
+        <div id="calendarHeatmap" style="overflow-x:auto;padding-bottom:8px;"></div>
+        {% else %}
+        <div class="empty-state py-4">Нет данных</div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+  {% endif %}
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+{% if stats.total and distribution %}
+<script>
+// Spread distribution bar chart
+const distData = {{ distribution | tojson }};
+const bucketOrder = ['0–1%','1–2%','2–3%','3–5%','5–10%','10%+'];
+const distMap = {};
+distData.forEach(d => { distMap[d.bucket] = d.count; });
+const distLabels = bucketOrder.filter(b => distMap[b]);
+const distCounts = distLabels.map(b => distMap[b] || 0);
+
+new Chart(document.getElementById('distChart'), {
+  type: 'bar',
+  data: {
+    labels: distLabels,
+    datasets: [{ label: 'Количество', data: distCounts,
+      backgroundColor: ['rgba(139,148,158,.4)','rgba(88,166,255,.4)','rgba(63,185,80,.4)',
+                        'rgba(63,185,80,.6)','rgba(63,185,80,.8)','rgba(63,185,80,1)'],
+      borderRadius: 4, borderWidth: 0 }],
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    plugins: { legend: { display:false } },
+    scales: {
+      x: { ticks:{color:'#8b949e'}, grid:{color:'#21262d'} },
+      y: { ticks:{color:'#8b949e',stepSize:1}, grid:{color:'#21262d'}, beginAtZero:true },
+    },
+  },
+});
+</script>
+{% endif %}
+
+{% if stats.total and heatmap %}
+<script>
+// Hourly heatmap as matrix chart
+const hmRaw = {{ heatmap | tojson }};
+// Build 24h × 7days matrix
+const matrix = Array.from({length:7}, () => Array(24).fill(0));
+const matrixPct = Array.from({length:7}, () => Array(24).fill(0));
+hmRaw.forEach(d => {
+  const h = d.hour, wd = (d.weekday + 6) % 7; // convert Sun=0 to Mon=0
+  if (h >= 0 && h < 24 && wd >= 0 && wd < 7) {
+    matrix[wd][h] = d.count;
+    matrixPct[wd][h] = d.avg_pct || 0;
+  }
+});
+const maxVal = Math.max(...matrix.flat(), 1);
+const days = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+const hours = Array.from({length:24}, (_,i) => i + ':00');
+
+const datasets = [];
+for (let wd = 0; wd < 7; wd++) {
+  datasets.push({
+    label: days[wd],
+    data: Array.from({length:24}, (_,h) => ({ x: h, y: wd, v: matrix[wd][h] })),
+    backgroundColor(ctx) {
+      const v = ctx.raw?.v || 0;
+      const alpha = v > 0 ? 0.2 + 0.8 * (v / maxVal) : 0.05;
+      return `rgba(63,185,80,${alpha})`;
+    },
+    borderColor: 'transparent',
+    borderWidth: 0,
+    pointRadius: 0,
+  });
+}
+
+new Chart(document.getElementById('heatmapChart'), {
+  type: 'bubble',
+  data: { datasets },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const v = ctx.raw.v;
+            const h = ctx.raw.x;
+            const wd = days[ctx.raw.y];
+            return `${wd} ${h}:00 — ${v} возможностей`;
+          },
+        },
+      },
+    },
+    scales: {
+      x: {
+        type: 'linear', min: -0.5, max: 23.5,
+        ticks: { color:'#8b949e', stepSize:1, callback: v => v+':00' },
+        grid: { color:'#21262d' },
+        title: { display:true, text:'Час UTC', color:'#8b949e' },
+      },
+      y: {
+        type: 'linear', min: -0.5, max: 6.5, reverse: false,
+        ticks: { color:'#8b949e', stepSize:1, callback: v => days[Math.round(v)] || '' },
+        grid: { color:'#21262d' },
+      },
+    },
+    elements: { point: { radius: 14 } },
+  },
+});
+</script>
+{% endif %}
+
+{% if stats.total and calendar %}
+<script>
+// GitHub-style calendar heatmap
+const calData = {{ calendar | tojson }};
+const calMap = {};
+calData.forEach(d => { calMap[d.date] = d.count; });
+
+const container = document.getElementById('calendarHeatmap');
+if (container) {
+  const today = new Date();
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - 364);
+  // align to Monday
+  while (startDate.getDay() !== 1) startDate.setDate(startDate.getDate() - 1);
+
+  const maxCount = Math.max(...Object.values(calMap), 1);
+
+  const weeks = [];
+  let current = new Date(startDate);
+  while (current <= today) {
+    const week = [];
+    for (let d = 0; d < 7 && current <= today; d++) {
+      const iso = current.toISOString().slice(0, 10);
+      const count = calMap[iso] || 0;
+      week.push({ iso, count });
+      current.setDate(current.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+
+  const monthNames = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+  let html = '<div style="display:flex;gap:2px;align-items:flex-start;">';
+
+  // Day labels
+  html += '<div style="display:flex;flex-direction:column;gap:2px;margin-top:20px;">';
+  ['Пн','','Ср','','Пт','','Вс'].forEach(d => {
+    html += `<div style="height:14px;font-size:.68rem;color:var(--muted);text-align:right;padding-right:4px;line-height:14px;">${d}</div>`;
+  });
+  html += '</div>';
+
+  let lastMonth = -1;
+  weeks.forEach((week, wi) => {
+    const firstDay = new Date(week[0].iso);
+    const month = firstDay.getMonth();
+    html += '<div style="display:flex;flex-direction:column;gap:2px;">';
+    // Month label
+    if (month !== lastMonth) {
+      html += `<div style="height:16px;font-size:.68rem;color:var(--muted);white-space:nowrap;">${monthNames[month]}</div>`;
+      lastMonth = month;
+    } else {
+      html += '<div style="height:16px;"></div>';
+    }
+    week.forEach(day => {
+      const alpha = day.count > 0 ? Math.max(0.2, day.count / maxCount) : 0;
+      const bg = day.count > 0 ? `rgba(63,185,80,${alpha})` : 'rgba(255,255,255,.05)';
+      const title = `${day.iso}: ${day.count} возможностей`;
+      html += `<div title="${title}" style="width:14px;height:14px;border-radius:3px;background:${bg};cursor:default;"></div>`;
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // Legend
+  html += '<div style="display:flex;align-items:center;gap:4px;margin-top:8px;font-size:.75rem;color:var(--muted);">';
+  html += '<span>Меньше</span>';
+  [0, 0.2, 0.4, 0.65, 1].forEach(a => {
+    const bg = a > 0 ? `rgba(63,185,80,${a})` : 'rgba(255,255,255,.05)';
+    html += `<div style="width:14px;height:14px;border-radius:3px;background:${bg};"></div>`;
+  });
+  html += '<span>Больше</span></div>';
+
+  container.innerHTML = html;
+}
+</script>
+{% endif %}
+</body>
+</html>

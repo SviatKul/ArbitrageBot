@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Документация — ArbitrageBot</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --border:#30363d; --green:#3fb950; --muted:#8b949e; --yellow:#e3b341; --blue:#58a6ff; }
+  body { background: var(--bg); color: #e6edf3; font-family: system-ui, sans-serif; }
+  .navbar { background: var(--card) !important; border-bottom: 1px solid var(--border); }
+  .accordion-item { background: var(--card); border: 1px solid var(--border); border-radius: 10px !important; margin-bottom: .75rem; overflow: hidden; }
+  .accordion-button { background: var(--card); color: #e6edf3; font-weight: 600; box-shadow: none !important; }
+  .accordion-button:not(.collapsed) { background: rgba(63,185,80,.07); color: var(--green); box-shadow: none; }
+  .accordion-button::after { filter: invert(1) brightness(.6); }
+  .accordion-body { background: var(--card); color: #c9d1d9; font-size: .93rem; line-height: 1.7; }
+  code { background: rgba(255,255,255,.07); color: var(--yellow); padding: 2px 6px; border-radius: 4px; font-size: .9em; }
+  pre { background: #010409; border: 1px solid var(--border); border-radius: 8px; padding: 1rem; overflow-x: auto; }
+  pre code { background: transparent; color: #e6edf3; padding: 0; }
+  .badge-venue { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: .78rem; font-weight: 600; margin-right: 6px; }
+  .badge-poly { background: rgba(88,166,255,.15); color: var(--blue); border: 1px solid rgba(88,166,255,.3); }
+  .badge-kalshi { background: rgba(63,185,80,.15); color: var(--green); border: 1px solid rgba(63,185,80,.3); }
+  .badge-betfair { background: rgba(227,179,65,.15); color: var(--yellow); border: 1px solid rgba(227,179,65,.3); }
+  .badge-smarkets { background: rgba(248,81,73,.15); color: #f85149; border: 1px solid rgba(248,81,73,.3); }
+  .step { display: flex; gap: 12px; align-items: flex-start; margin-bottom: .8rem; }
+  .step-num { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; background: rgba(63,185,80,.2);
+              color: var(--green); font-weight: 700; font-size: .8rem; display: flex; align-items: center; justify-content: center; }
+  .formula-box { background: #010409; border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin: .8rem 0; font-family: 'Courier New', monospace; }
+  .formula-box .var { color: var(--blue); }
+  .formula-box .op { color: var(--muted); }
+  .formula-box .result { color: var(--green); font-weight: 700; }
+  .api-card { background: #010409; border: 1px solid var(--border); border-radius: 8px; padding: .9rem 1.1rem; margin-bottom: .75rem; }
+  .api-card h6 { color: #e6edf3; margin-bottom: .4rem; font-size: .95rem; }
+  .api-card .link { color: var(--blue); font-size: .85rem; word-break: break-all; }
+  .api-card .fee { color: var(--muted); font-size: .82rem; margin-top: .3rem; }
+  .section-icon { margin-right: .5rem; }
+  a { color: var(--blue); }
+  a:hover { color: #79c0ff; }
+  table { width: 100%; border-collapse: collapse; }
+  th { color: var(--muted); font-size: .82rem; font-weight: 500; border-bottom: 1px solid var(--border); padding: .4rem .5rem; text-align: left; }
+  td { padding: .5rem; border-bottom: 1px solid rgba(48,54,61,.5); font-size: .88rem; }
+</style>
+</head>
+<body>
+<nav class="navbar navbar-dark px-4 py-3 mb-4">
+  <a class="navbar-brand fw-bold" style="color:#3fb950;" href="/">⚡ ArbitrageBot</a>
+  <div class="d-flex gap-3 align-items-center">
+    <a href="/users" style="color:var(--muted); text-decoration:none; font-size:.9rem;">Пользователи</a>
+    <a href="/profitability" style="color:var(--muted); text-decoration:none; font-size:.9rem;">Доходность</a>
+    <a href="/" style="color:var(--muted); text-decoration:none; font-size:.9rem;">Дашборд</a>
+    <a href="/logout" class="btn btn-sm btn-outline-secondary">Выйти</a>
+  </div>
+</nav>
+
+<div class="container mb-5" style="max-width:860px;">
+  <h4 class="mb-1">Документация</h4>
+  <p style="color:var(--muted); font-size:.9rem; margin-bottom:1.5rem;">Инструкции, математика и где брать ключи</p>
+
+  <div class="accordion" id="docs">
+
+    <!-- ── 1. Инструкция ── -->
+    <div class="accordion-item">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#s1">
+          <i class="fas fa-play-circle section-icon" style="color:#3fb950;"></i>
+          Инструкция по запуску
+        </button>
+      </h2>
+      <div id="s1" class="accordion-collapse collapse" data-bs-parent="#docs">
+        <div class="accordion-body">
+
+          <div class="step"><div class="step-num">1</div><div>
+            <strong>Клонируйте и настройте окружение</strong><br>
+            <pre><code>cd ArbitrageBot
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt</code></pre>
+          </div></div>
+
+          <div class="step"><div class="step-num">2</div><div>
+            <strong>Заполните <code>.env</code></strong><br>
+            Скопируйте <code>.env.example</code> в <code>.env</code> и укажите ключи хотя бы для двух бирж.
+            Без кредентиалов бот запускается в режиме <code>DRY_RUN=true</code> — сделки не исполняются.
+          </div></div>
+
+          <div class="step"><div class="step-num">3</div><div>
+            <strong>Запустите веб-интерфейс</strong><br>
+            <pre><code>python web.py</code></pre>
+            Откройте <a href="http://localhost:8080" target="_blank">http://localhost:8080</a> в браузере.
+            При первом запуске вы попадёте на страницу создания аккаунта.
+          </div></div>
+
+          <div class="step"><div class="step-num">4</div><div>
+            <strong>Запустите бота</strong><br>
+            Нажмите кнопку <strong>▶ Запустить</strong> на дашборде — или из терминала:<br>
+            <pre><code>python run.py</code></pre>
+          </div></div>
+
+          <div class="step"><div class="step-num">5</div><div>
+            <strong>Бэктестинг</strong><br>
+            Проверьте текущее состояние рынка без исполнения сделок:<br>
+            <pre><code>python backtest.py --live --stake 100
+python backtest.py --csv data/quotes_history.csv --output results.json</code></pre>
+          </div></div>
+
+          <hr style="border-color:var(--border); margin: 1rem 0;">
+          <h6 style="color:#e6edf3;">Telegram-команды</h6>
+          <table>
+            <tr><th>Команда</th><th>Действие</th></tr>
+            <tr><td><code>/status</code></td><td>Статус бота, биржи, circuit breaker, P&L</td></tr>
+            <tr><td><code>/positions</code></td><td>Открытые позиции</td></tr>
+            <tr><td><code>/pnl</code></td><td>P&L за последние 7 дней</td></tr>
+            <tr><td><code>/stop</code></td><td>Остановить бот</td></tr>
+            <tr><td><code>/help</code></td><td>Справка по командам</td></tr>
+          </table>
+
+          <hr style="border-color:var(--border); margin: 1rem 0;">
+          <h6 style="color:#e6edf3;">Структура данных</h6>
+          <table>
+            <tr><th>Файл</th><th>Назначение</th></tr>
+            <tr><td><code>data/positions.json</code></td><td>Снэпшот открытых позиций (crash recovery)</td></tr>
+            <tr><td><code>data/trades.csv</code></td><td>Лог всех найденных возможностей и сделок</td></tr>
+            <tr><td><code>data/pnl_history.json</code></td><td>Дневная история P&L (для графика)</td></tr>
+            <tr><td><code>logs/bot.log</code></td><td>Логи бота с ротацией (7 дней)</td></tr>
+            <tr><td><code>storage/users.db</code></td><td>База пользователей дашборда</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 2. Математика ── -->
+    <div class="accordion-item">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#s2">
+          <i class="fas fa-square-root-alt section-icon" style="color:#e3b341;"></i>
+          Математическая модель
+        </button>
+      </h2>
+      <div id="s2" class="accordion-collapse collapse" data-bs-parent="#docs">
+        <div class="accordion-body">
+
+          <h6 style="color:#e6edf3;">Суть арбитража на рынках предсказаний</h6>
+          <p>Каждый исход бинарного события торгуется как контракт в диапазоне $0–$1. При наступлении события YES = $1, NO = $0 (и наоборот). В норме: <strong>YES_ask + NO_ask ≈ $1</strong>.</p>
+          <p>Арбитраж возникает когда на <em>разных</em> биржах сумма цен ниже $1 с учётом комиссий:</p>
+
+          <div class="formula-box">
+            <span class="result">Прибыль</span> <span class="op">=</span>
+            <span class="op">$1 −</span>
+            <span class="var">YES_ask<sub>A</sub></span> <span class="op">×</span> <span class="op">(1 +</span> <span class="var">fee_A</span><span class="op">) −</span>
+            <span class="var">NO_ask<sub>B</sub></span> <span class="op">×</span> <span class="op">(1 +</span> <span class="var">fee_B</span><span class="op">)</span>
+          </div>
+
+          <p>Торговля выгодна, если <code>Прибыль &gt; 0</code>:</p>
+
+          <div class="formula-box">
+            <span class="var">YES_ask<sub>A</sub></span> <span class="op">+</span>
+            <span class="var">NO_ask<sub>B</sub></span>
+            <span class="op">&lt;</span>
+            <span class="result">1 − fee_A × YES_ask<sub>A</sub> − fee_B × NO_ask<sub>B</sub></span>
+          </div>
+
+          <p>Пример: YES @ Polymarket = 0.44, NO @ Kalshi = 0.44, fee = 2% + 7%</p>
+          <div class="formula-box">
+            Прибыль = 1 − 0.44×1.02 − 0.44×1.07 = 1 − 0.449 − 0.471 = <span class="result">+0.08 (+8.0%)</span>
+          </div>
+
+          <hr style="border-color:var(--border); margin: 1rem 0;">
+          <h6 style="color:#e6edf3;">Критерий Келли</h6>
+          <p>Оптимальный размер позиции по частичному Келли:</p>
+          <div class="formula-box">
+            <span class="var">f*</span> <span class="op">=</span> <span class="var">edge</span> <span class="op">/</span> <span class="op">(1 −</span> <span class="var">edge</span><span class="op">)</span><br>
+            <span class="var">stake</span> <span class="op">=</span> <span class="var">kelly_fraction</span> <span class="op">×</span> <span class="var">f*</span> <span class="op">×</span> <span class="var">bankroll</span>
+          </div>
+          <p>Где <code>edge = profit_percent / 100</code>. По умолчанию <code>kelly_fraction = 0.25</code> (четверть-Келли).</p>
+
+          <hr style="border-color:var(--border); margin: 1rem 0;">
+          <h6 style="color:#e6edf3;">Circuit Breaker</h6>
+          <p>Автоматически останавливает торговлю при:</p>
+          <table>
+            <tr><th>Условие</th><th>Порог (по умолчанию)</th></tr>
+            <tr><td>Дневной убыток в $</td><td><code>MAX_DAILY_LOSS_USD = $500</code></td></tr>
+            <tr><td>Дневной убыток в %</td><td><code>MAX_DAILY_LOSS_PCT = 10%</code> от bankroll</td></tr>
+            <tr><td>Ошибки подряд</td><td><code>5</code> подряд → WARNING, <code>10</code> → BROKEN</td></tr>
+          </table>
+
+          <hr style="border-color:var(--border); margin: 1rem 0;">
+          <h6 style="color:#e6edf3;">Комиссии бирж</h6>
+          <table>
+            <tr><th>Биржа</th><th>Комиссия</th><th>На что</th></tr>
+            <tr><td><span class="badge-venue badge-poly">Polymarket</span></td><td>2%</td><td>Taker fee от объёма</td></tr>
+            <tr><td><span class="badge-venue badge-kalshi">Kalshi</span></td><td>7%</td><td>Taker fee от объёма</td></tr>
+            <tr><td><span class="badge-venue badge-betfair">Betfair</span></td><td>5%</td><td>Комиссия с выигрыша</td></tr>
+            <tr><td><span class="badge-venue badge-smarkets">Smarkets</span></td><td>2%</td><td>Комиссия с выигрыша</td></tr>
+            <tr><td><span class="badge-venue" style="background:rgba(139,148,158,.15);color:var(--muted);border:1px solid rgba(139,148,158,.3);">Betdaq</span></td><td>2%</td><td>Комиссия с выигрыша</td></tr>
+            <tr><td><span class="badge-venue" style="background:rgba(139,148,158,.15);color:var(--muted);border:1px solid rgba(139,148,158,.3);">Matchbook</span></td><td>1.5%</td><td>Комиссия с выигрыша</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 3. API ключи ── -->
+    <div class="accordion-item">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#s3">
+          <i class="fas fa-key section-icon" style="color:#58a6ff;"></i>
+          Где брать API ключи
+        </button>
+      </h2>
+      <div id="s3" class="accordion-collapse collapse" data-bs-parent="#docs">
+        <div class="accordion-body">
+
+          <div class="api-card">
+            <h6><span class="badge-venue badge-poly">Polymarket</span> — публичные данные бесплатны</h6>
+            <div class="link">Для live-торговли: <a href="https://docs.polymarket.com" target="_blank">docs.polymarket.com</a></div>
+            <ol style="margin-top:.6rem; padding-left:1.2rem; font-size:.87rem;">
+              <li>Создайте кошелёк через приложение Polymarket (Web3)</li>
+              <li>Получите <strong>API Key/Secret/Passphrase</strong> через <code>POST /auth/api-key</code></li>
+              <li>Экспортируйте <strong>Private Key</strong> вашего кошелька</li>
+              <li>Установите <code>py-clob-client</code> (уже в requirements.txt)</li>
+            </ol>
+            <div class="fee">Цены доступны без авторизации. Live-ордера требуют Polygon-кошелёк.</div>
+          </div>
+
+          <div class="api-card">
+            <h6><span class="badge-venue badge-kalshi">Kalshi</span></h6>
+            <div class="link"><a href="https://kalshi.com/account/api" target="_blank">kalshi.com/account/api</a></div>
+            <ol style="margin-top:.6rem; padding-left:1.2rem; font-size:.87rem;">
+              <li>Зарегистрируйтесь на Kalshi (требуется верификация)</li>
+              <li>Перейдите в <strong>Account → API</strong></li>
+              <li>Создайте API Key → скопируйте <strong>Key ID</strong></li>
+              <li>Скачайте <strong>Private Key PEM</strong> файл (RSA)</li>
+              <li>Укажите путь к PEM в <code>KALSHI_PRIVATE_KEY_PATH</code> или вставьте содержимое в <code>KALSHI_PRIVATE_KEY_PEM</code></li>
+            </ol>
+            <div class="fee">Kalshi работает только в США. Taker fee: 7%.</div>
+          </div>
+
+          <div class="api-card">
+            <h6><span class="badge-venue badge-betfair">Betfair</span></h6>
+            <div class="link"><a href="https://developer.betfair.com" target="_blank">developer.betfair.com</a></div>
+            <ol style="margin-top:.6rem; padding-left:1.2rem; font-size:.87rem;">
+              <li>Создайте аккаунт Betfair (верификация личности)</li>
+              <li>Перейдите в <strong>Developer Portal → Create App Key</strong></li>
+              <li>Укажите <code>BETFAIR_USERNAME</code>, <code>BETFAIR_PASSWORD</code>, <code>BETFAIR_APP_KEY</code></li>
+            </ol>
+            <div class="fee">Betfair — крупнейшая P2P биржа. Комиссия: 5% с выигрыша (Premium Charge может быть выше).</div>
+          </div>
+
+          <div class="api-card">
+            <h6><span class="badge-venue badge-smarkets">Smarkets</span></h6>
+            <div class="link"><a href="https://developers.smarkets.com" target="_blank">developers.smarkets.com</a></div>
+            <ol style="margin-top:.6rem; padding-left:1.2rem; font-size:.87rem;">
+              <li>Создайте аккаунт Smarkets</li>
+              <li>Перейдите в <strong>API → Generate Token</strong></li>
+              <li>Укажите <code>SMARKETS_API_TOKEN</code> в .env</li>
+            </ol>
+            <div class="fee">Самая низкая комиссия среди UK-бирж: 2% с выигрыша.</div>
+          </div>
+
+          <div class="api-card">
+            <h6><span class="badge-venue" style="background:rgba(139,148,158,.15);color:var(--muted);border:1px solid rgba(139,148,158,.3);">Betdaq</span></h6>
+            <div class="link"><a href="https://developer.betdaq.com" target="_blank">developer.betdaq.com</a></div>
+            <ol style="margin-top:.6rem; padding-left:1.2rem; font-size:.87rem;">
+              <li>Зарегистрируйтесь на Betdaq</li>
+              <li>Запросите API доступ на developer.betdaq.com</li>
+              <li>Укажите <code>BETDAQ_USERNAME</code>, <code>BETDAQ_PASSWORD</code>, <code>BETDAQ_API_KEY</code></li>
+            </ol>
+            <div class="fee">Комиссия: 2% с выигрыша.</div>
+          </div>
+
+          <div class="api-card">
+            <h6><span class="badge-venue" style="background:rgba(139,148,158,.15);color:var(--muted);border:1px solid rgba(139,148,158,.3);">Matchbook</span></h6>
+            <div class="link"><a href="https://matchbook.com/api" target="_blank">matchbook.com/api</a></div>
+            <ol style="margin-top:.6rem; padding-left:1.2rem; font-size:.87rem;">
+              <li>Зарегистрируйтесь на Matchbook</li>
+              <li>Укажите <code>MATCHBOOK_USERNAME</code> и <code>MATCHBOOK_PASSWORD</code> в .env</li>
+              <li>Bот авторизуется автоматически при первом запросе</li>
+            </ol>
+            <div class="fee">Самая низкая комиссия: 1.5% с выигрыша.</div>
+          </div>
+
+          <div class="api-card">
+            <h6><i class="fab fa-telegram me-1" style="color:#229ED9;"></i> Telegram Bot</h6>
+            <ol style="margin-top:.6rem; padding-left:1.2rem; font-size:.87rem;">
+              <li>Напишите <a href="https://t.me/BotFather" target="_blank">@BotFather</a> команду <code>/newbot</code></li>
+              <li>Следуйте инструкциям, скопируйте <strong>Bot Token</strong></li>
+              <li>Напишите вашему боту любое сообщение</li>
+              <li>Перейдите по ссылке <code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates?allowed_updates=["message"]</code></li>
+              <li>В ответе найдите <code>"chat": {"id": 123456789}</code> — это ваш Chat ID</li>
+              <li>Укажите <code>TELEGRAM_BOT_TOKEN</code> и <code>TELEGRAM_CHAT_ID</code> в .env</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 4. Настройки ── -->
+    <div class="accordion-item">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#s4">
+          <i class="fas fa-sliders-h section-icon" style="color:#8b949e;"></i>
+          Ключевые параметры .env
+        </button>
+      </h2>
+      <div id="s4" class="accordion-collapse collapse" data-bs-parent="#docs">
+        <div class="accordion-body">
+          <table>
+            <tr><th>Параметр</th><th>По умолчанию</th><th>Описание</th></tr>
+            <tr><td><code>DRY_RUN</code></td><td><code>true</code></td><td>Симуляция без реальных сделок</td></tr>
+            <tr><td><code>MIN_PROFIT_PERCENT</code></td><td><code>1.5</code></td><td>Минимальный спред для входа (%)</td></tr>
+            <tr><td><code>POLL_INTERVAL_SECONDS</code></td><td><code>5</code></td><td>Интервал между итерациями</td></tr>
+            <tr><td><code>MARKET_CACHE_TTL_SECONDS</code></td><td><code>60</code></td><td>Кэш списка рынков</td></tr>
+            <tr><td><code>KELLY_ENABLED</code></td><td><code>false</code></td><td>Использовать размер по Келли</td></tr>
+            <tr><td><code>KELLY_FRACTION</code></td><td><code>0.25</code></td><td>Доля от полного Келли</td></tr>
+            <tr><td><code>KELLY_BANKROLL</code></td><td><code>1000</code></td><td>Банкролл в USD</td></tr>
+            <tr><td><code>MAX_DAILY_LOSS_USD</code></td><td><code>500</code></td><td>Дневной стоп-лосс в $</td></tr>
+            <tr><td><code>MAX_DAILY_LOSS_PCT</code></td><td><code>10</code></td><td>Дневной стоп-лосс в % от bankroll</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /accordion -->
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

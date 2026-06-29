@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arbitrage Bot</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #e6edf3; --muted: #8b949e; --green: #3fb950; --red: #f85149; --yellow: #d29922; --blue: #58a6ff; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+  .badge-running { background: rgba(63,185,80,.15); color: var(--green); border: 1px solid rgba(63,185,80,.3); }
+  .badge-stopped { background: rgba(248,81,73,.15); color: var(--red); border: 1px solid rgba(248,81,73,.3); }
+  .exchange-card { transition: transform .15s; cursor: default; }
+  .exchange-card:hover { transform: translateY(-2px); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot-green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot-red { background: var(--red); }
+  #log-box { background: #010409; border: 1px solid var(--border); border-radius: 8px; height: 380px; overflow-y: auto; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 11.5px; padding: 12px; }
+  .log-line { color: #8b949e; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+  .log-line.info  { color: #58a6ff; }
+  .log-line.warn  { color: #d29922; }
+  .log-line.error { color: #f85149; }
+  .log-line.success { color: #3fb950; }
+  .btn-start { background: rgba(63,185,80,.15); color: var(--green); border: 1px solid rgba(63,185,80,.4); }
+  .btn-start:hover { background: rgba(63,185,80,.25); color: var(--green); }
+  .btn-stop { background: rgba(248,81,73,.15); color: var(--red); border: 1px solid rgba(248,81,73,.4); }
+  .btn-stop:hover { background: rgba(248,81,73,.25); color: var(--red); }
+  .stat-card { text-align: center; padding: 20px; }
+  .stat-val { font-size: 2rem; font-weight: 700; }
+  .stat-label { color: var(--muted); font-size: .85rem; margin-top: 4px; }
+  .navbar { background: var(--card) !important; border-bottom: 1px solid var(--border); }
+  .pnl-pos { color: var(--green); }
+  .pnl-neg { color: var(--red); }
+</style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg mb-4">
+  <div class="container-fluid px-4">
+    <span class="navbar-brand fw-bold text-white">⚡ Arbitrage Bot</span>
+
+    <!-- Status badge always visible -->
+    <span id="status-badge" class="badge px-3 py-2 fs-6 me-2 {{ 'badge-running' if is_running else 'badge-stopped' }}">
+      <span class="dot {{ 'dot-green' if is_running else 'dot-red' }} me-2"></span>
+      <span class="d-none d-sm-inline">{{ 'Работает' if is_running else 'Остановлен' }}</span>
+      {% if pid %}<span class="d-none d-md-inline"> · PID {{ pid }}</span>{% endif %}
+    </span>
+
+    <!-- Hamburger toggle -->
+    <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse"
+            data-bs-target="#navbarMain" aria-controls="navbarMain" aria-expanded="false"
+            style="color:var(--muted); box-shadow:none;">
+      <i class="fas fa-bars"></i>
+    </button>
+
+    <div class="collapse navbar-collapse" id="navbarMain">
+      <div class="d-flex flex-wrap gap-2 align-items-center mt-2 mt-lg-0 ms-lg-2">
+        <button id="btn-start" class="btn btn-start btn-sm px-3 {{ 'd-none' if is_running }}" onclick="startBot()">
+          <i class="fas fa-play me-1"></i> Запустить
+        </button>
+        <button id="btn-stop" class="btn btn-stop btn-sm px-3 {{ '' if is_running else 'd-none' }}" onclick="stopBot()">
+          <i class="fas fa-stop me-1"></i> Остановить
+        </button>
+        <a href="/settings" class="btn btn-sm btn-outline-secondary px-3">
+          <i class="fas fa-cog me-1"></i> Настройки
+        </a>
+        <a href="/profitability" class="btn btn-sm btn-outline-secondary px-3">
+          <i class="fas fa-calculator me-1"></i> Доходность
+        </a>
+        <a href="/pnl" class="btn btn-sm btn-outline-secondary px-3">
+          <i class="fas fa-chart-line me-1"></i> P&amp;L
+        </a>
+        <a href="/backtest" class="btn btn-sm btn-outline-secondary px-3">
+          <i class="fas fa-flask me-1"></i> Backtest
+        </a>
+        <a href="/opportunities" class="btn btn-sm btn-outline-secondary px-3" title="История">
+          <i class="fas fa-history"></i>
+        </a>
+        <a href="/analytics" class="btn btn-sm btn-outline-secondary px-3" title="Аналитика">
+          <i class="fas fa-chart-bar"></i>
+        </a>
+        <a href="/markets" class="btn btn-sm btn-outline-secondary px-3" title="Рынки">
+          <i class="fas fa-globe"></i>
+        </a>
+        <a href="/validate" class="btn btn-sm btn-outline-secondary px-3" title="Диагностика">
+          <i class="fas fa-stethoscope"></i>
+        </a>
+        <a href="/logs" class="btn btn-sm btn-outline-secondary px-3" title="Логи">
+          <i class="fas fa-terminal"></i>
+        </a>
+        <a href="/docs" class="btn btn-sm btn-outline-secondary px-3" title="Документация">
+          <i class="fas fa-book"></i>
+        </a>
+        <a href="/2fa/setup" class="btn btn-sm btn-outline-secondary px-3" title="2FA">
+          <i class="fas fa-shield-alt"></i>
+        </a>
+        {% if current_user and current_user.is_admin %}
+        <a href="/users" class="btn btn-sm btn-outline-secondary px-3" title="Пользователи">
+          <i class="fas fa-users"></i>
+        </a>
+        <a href="/audit" class="btn btn-sm btn-outline-secondary px-3" title="Аудит">
+          <i class="fas fa-clipboard-list"></i>
+        </a>
+        {% endif %}
+        <a href="/change-password" class="btn btn-sm btn-outline-secondary px-3" title="Пароль">
+          <i class="fas fa-key"></i>
+        </a>
+        <a href="/logout" class="btn btn-sm btn-outline-danger px-3">
+          <i class="fas fa-sign-out-alt"></i>
+        </a>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid px-4">
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ 'success' if cat == 'success' else 'warning' if cat == 'warning' else 'danger' }} py-2 mb-3" style="font-size:.9rem;">
+    <i class="fas fa-{{ 'check-circle' if cat == 'success' else 'exclamation-triangle' }} me-2"></i>{{ msg }}
+  </div>
+  {% endfor %}
+  {% endwith %}
+
+  <!-- Stats row -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card stat-card">
+        <div class="stat-val" id="stat-positions">{{ positions.open_count }}</div>
+        <div class="stat-label">Открытых позиций</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card">
+        <div class="stat-val" id="stat-pnl">$0.00</div>
+        <div class="stat-label">Дневной P&L</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card">
+        <div class="stat-val" id="stat-exchanges">{{ exchanges | selectattr('configured') | list | length }}</div>
+        <div class="stat-label">Бирж подключено</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card">
+        <div class="stat-val" id="stat-mode" style="font-size:1.1rem; padding-top: 14px;">
+          {{ 'DRY RUN' if env.get('DRY_RUN','true').lower()=='true' else 'LIVE' }}
+        </div>
+        <div class="stat-label">Режим торговли</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Exchanges grid -->
+  <div class="row g-3 mb-4">
+    {% for ex in exchanges %}
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card exchange-card p-3">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <span class="dot {{ 'dot-green' if ex.configured else 'dot-red' }}"></span>
+          <strong>{{ ex.name }}</strong>
+        </div>
+        <div style="font-size:.78rem; color: var(--muted);">{{ ex.note }}</div>
+        {% if not ex.configured %}
+        <a href="/settings#{{ ex.key }}" class="stretched-link"></a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Live Opportunities -->
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center" style="border-bottom:1px solid var(--border);background:transparent;">
+      <span><i class="fas fa-crosshairs me-2 text-muted"></i>Live арбитраж <span id="opp-count" class="badge ms-2" style="background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.3);">0</span></span>
+      <span id="opp-meta" style="font-size:.78rem;color:var(--muted);">—</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dark table-hover mb-0" style="--bs-table-bg:transparent;--bs-table-hover-bg:rgba(255,255,255,.04);font-size:.85rem;">
+        <thead style="color:var(--muted);font-size:.78rem;">
+          <tr><th>Рынок</th><th>YES</th><th>NO</th><th class="text-end">YES цена</th><th class="text-end">NO цена</th><th class="text-end">Прибыль</th><th class="text-end">Объём ($)</th></tr>
+        </thead>
+        <tbody id="opp-body">
+          <tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px;">Бот не запущен или возможностей нет</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Logs -->
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center" style="border-bottom: 1px solid var(--border); background: transparent;">
+      <span><i class="fas fa-terminal me-2 text-muted"></i>Логи</span>
+      <div class="d-flex gap-2">
+        <span id="log-status" class="badge" style="background: rgba(88,166,255,.15); color: var(--blue); border: 1px solid rgba(88,166,255,.3);">
+          <span class="dot" style="background:var(--blue); width:6px; height:6px;"></span> live
+        </span>
+        <button class="btn btn-sm btn-outline-secondary py-0" onclick="clearLogs()">Очистить</button>
+      </div>
+    </div>
+    <div id="log-box">
+      {% for line in logs %}
+      <div class="log-line {{ classify(line) }}">{{ line }}</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- P&L chart -->
+  <div class="card mb-4">
+    <div class="card-header" style="border-bottom: 1px solid var(--border); background: transparent;">
+      <i class="fas fa-chart-line me-2 text-muted"></i>P&L за 30 дней
+    </div>
+    <div class="card-body" style="padding: 16px;">
+      <canvas id="pnl-chart" height="110"></canvas>
+    </div>
+  </div>
+
+  <!-- Trade log -->
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center" style="border-bottom: 1px solid var(--border); background: transparent;">
+      <span><i class="fas fa-list me-2 text-muted"></i>Последние сделки</span>
+      <span id="trades-summary" style="font-size:.8rem; color: var(--muted);"></span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dark table-hover mb-0" style="--bs-table-bg: transparent; --bs-table-hover-bg: rgba(255,255,255,.04); font-size:.85rem;">
+        <thead style="color: var(--muted); font-size:.8rem;">
+          <tr><th>Время</th><th>Рынок</th><th>YES</th><th>NO</th><th>Спред</th><th>Статус</th></tr>
+        </thead>
+        <tbody id="trades-body">
+          <tr><td colspan="6" style="color:var(--muted); text-align:center; padding:20px;">Загрузка…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Open positions -->
+  {% if positions.positions %}
+  <div class="card mb-4">
+    <div class="card-header" style="border-bottom: 1px solid var(--border); background: transparent;">
+      <i class="fas fa-chart-bar me-2 text-muted"></i>Открытые позиции
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dark table-hover mb-0" style="--bs-table-bg: transparent; --bs-table-hover-bg: rgba(255,255,255,.04);">
+        <thead style="color: var(--muted); font-size: .85rem;">
+          <tr><th>Биржа</th><th>Рынок</th><th>Сторона</th><th>Контракты</th><th>Цена входа</th></tr>
+        </thead>
+        <tbody style="font-size: .9rem;">
+          {% for p in positions.positions %}
+          <tr>
+            <td>{{ p.venue }}</td>
+            <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ p.title }}">{{ p.title or p.market_id }}</td>
+            <td><span class="badge {{ 'bg-success' if p.side=='YES' else 'bg-danger' }}">{{ p.side }}</span></td>
+            <td>{{ p.contracts }}</td>
+            <td>{{ '%.4f'|format(p.entry_price) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+// ── Log coloring helper (mirrors Python log levels)
+function classifyLine(line) {
+  if (line.includes('| ERROR') || line.includes('| CRITICAL')) return 'error';
+  if (line.includes('| WARNING')) return 'warn';
+  if (line.includes('| SUCCESS') || line.includes('✅') || line.includes('Сделка')) return 'success';
+  if (line.includes('| INFO')) return 'info';
+  return '';
+}
+
+function appendLog(text) {
+  const box = document.getElementById('log-box');
+  const div = document.createElement('div');
+  div.className = 'log-line ' + classifyLine(text);
+  div.textContent = text;
+  box.appendChild(div);
+  if (box.children.length > 500) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+
+function clearLogs() {
+  document.getElementById('log-box').innerHTML = '';
+}
+
+// ── SSE log stream
+let evtSource;
+function startLogStream() {
+  if (evtSource) evtSource.close();
+  evtSource = new EventSource('/api/logs/stream');
+  evtSource.onmessage = e => appendLog(JSON.parse(e.data));
+  evtSource.onerror = () => {
+    document.getElementById('log-status').style.display = 'none';
+    setTimeout(startLogStream, 3000);
+  };
+}
+startLogStream();
+
+// ── Bot control
+async function startBot() {
+  try {
+    const r = await fetch('/api/start', {method:'POST'});
+    if (r.redirected || !r.ok) { window.location.reload(); return; }
+    const d = await r.json();
+    updateStatus(d.running, d.pid);
+  } catch(e) { window.location.reload(); }
+}
+async function stopBot() {
+  try {
+    const r = await fetch('/api/stop', {method:'POST'});
+    if (r.redirected || !r.ok) { window.location.reload(); return; }
+    const d = await r.json();
+    updateStatus(d.running, null);
+  } catch(e) { window.location.reload(); }
+}
+function updateStatus(running, pid) {
+  const badge = document.getElementById('status-badge');
+  const dot = badge.querySelector('.dot');
+  badge.className = 'badge px-3 py-2 fs-6 me-2 ' + (running ? 'badge-running' : 'badge-stopped');
+  dot.className = 'dot me-2 ' + (running ? 'dot-green' : 'dot-red');
+  const label = badge.querySelector('.d-none.d-sm-inline') || badge.querySelector('span:not(.dot)');
+  if (label) label.textContent = running ? (pid ? `Работает · PID ${pid}` : 'Работает') : 'Остановлен';
+  document.getElementById('btn-start').classList.toggle('d-none', running);
+  document.getElementById('btn-stop').classList.toggle('d-none', !running);
+}
+
+// ── Poll status every 5s
+setInterval(async () => {
+  try {
+    const r = await fetch('/api/status');
+    if (!r.ok || r.redirected) return;
+    const d = await r.json();
+    updateStatus(d.running, d.pid);
+    document.getElementById('stat-positions').textContent = d.open_positions;
+    const pnl = d.daily_pnl || 0;
+    const el = document.getElementById('stat-pnl');
+    el.textContent = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+    el.className = 'stat-val ' + (pnl >= 0 ? 'pnl-pos' : 'pnl-neg');
+  } catch(e) {}
+}, 5000);
+
+// ── XSS-safe helper
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Trades table
+async function loadTrades() {
+  const d = await fetch('/api/trades?n=30').then(r => r.json()).catch(() => null);
+  if (!d) return;
+  const s = d.summary || {};
+  const summary = document.getElementById('trades-summary');
+  if (s.total !== undefined) {
+    summary.textContent = `всего ${s.total} | исполнено ${s.executed} | avg ${(s.avg_spread_pct||0).toFixed(2)}%`;
+  }
+  const tbody = document.getElementById('trades-body');
+  const trades = (d.trades || []).reverse();
+  if (!trades.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px;">Сделок пока нет</td></tr>';
+    return;
+  }
+  tbody.innerHTML = trades.map(t => {
+    const statusColor = t.status === 'executed' ? '#3fb950' : t.status === 'failed' ? '#f85149' : '#8b949e';
+    const spread = parseFloat(t.spread_pct || 0);
+    return `<tr>
+      <td style="color:var(--muted)">${esc((t.timestamp_utc||'').slice(11,19))}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.market)}">${esc(t.market)}</td>
+      <td>${esc(t.yes_venue)}</td>
+      <td>${esc(t.no_venue)}</td>
+      <td style="color:${spread>0?'#3fb950':'#f85149'}">${spread>0?'+':''}${spread.toFixed(2)}%</td>
+      <td><span style="color:${statusColor}">${esc(t.status)}</span></td>
+    </tr>`;
+  }).join('');
+}
+loadTrades();
+setInterval(loadTrades, 10000);
+
+// ── P&L chart
+let pnlChart;
+async function loadPnlChart() {
+  const d = await fetch('/api/pnl-history').then(r => r.json()).catch(() => ({history: []}));
+  const history = d.history || [];
+  const labels = history.map(h => h.date);
+  const values = history.map(h => h.pnl);
+  const ctx = document.getElementById('pnl-chart').getContext('2d');
+  if (pnlChart) pnlChart.destroy();
+  pnlChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'P&L ($)',
+        data: values,
+        backgroundColor: values.map(v => v >= 0 ? 'rgba(63,185,80,.65)' : 'rgba(248,81,73,.65)'),
+        borderColor:     values.map(v => v >= 0 ? '#3fb950' : '#f85149'),
+        borderWidth: 1,
+        borderRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        label: ctx => '$' + ctx.parsed.y.toFixed(2)
+      }}},
+      scales: {
+        x: { ticks: { color: '#8b949e', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,.06)' } },
+        y: { ticks: { color: '#8b949e', callback: v => '$'+v }, grid: { color: 'rgba(255,255,255,.06)' } }
+      }
+    }
+  });
+}
+loadPnlChart();
+setInterval(loadPnlChart, 60000);
+
+// ── Live opportunities
+async function loadOpportunities() {
+  const d = await fetch('/api/opportunities').then(r => r.json()).catch(() => null);
+  if (!d) return;
+  const opps = d.opportunities || [];
+  document.getElementById('opp-count').textContent = opps.length;
+  const ts = d.ts ? new Date(d.ts).toLocaleTimeString('ru-RU') : '—';
+  document.getElementById('opp-meta').textContent =
+    `итерация #${d.iteration || 0} · проверено пар: ${d.checked_pairs || 0} · обновлено: ${ts}`;
+  const tbody = document.getElementById('opp-body');
+  if (!opps.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px;">Возможностей не найдено в последней итерации</td></tr>';
+    return;
+  }
+  tbody.innerHTML = opps.map(o => {
+    const pct = parseFloat(o.profit_pct || 0);
+    const pctColor = pct >= 3 ? '#3fb950' : pct >= 1 ? '#d29922' : '#8b949e';
+    const maxUsd = (parseFloat(o.max_size||0) * (parseFloat(o.yes_price||0) + parseFloat(o.no_price||0))).toFixed(2);
+    return `<tr>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(o.title)}">${esc(o.title)}</td>
+      <td><span class="badge" style="background:rgba(88,166,255,.15);color:#58a6ff">${esc(o.yes_venue)}</span></td>
+      <td><span class="badge" style="background:rgba(88,166,255,.15);color:#58a6ff">${esc(o.no_venue)}</span></td>
+      <td class="text-end font-monospace" style="color:#8b949e">${parseFloat(o.yes_price).toFixed(3)}</td>
+      <td class="text-end font-monospace" style="color:#8b949e">${parseFloat(o.no_price).toFixed(3)}</td>
+      <td class="text-end font-monospace" style="color:${pctColor};font-weight:600">+${pct.toFixed(2)}%</td>
+      <td class="text-end font-monospace" style="color:#8b949e">$${maxUsd}</td>
+    </tr>`;
+  }).join('');
+}
+loadOpportunities();
+setInterval(loadOpportunities, 8000);
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

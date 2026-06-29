@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Диагностика — ArbitrageBot</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+  :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--green:#3fb950;--red:#f85149;--yellow:#d29922;--blue:#58a6ff;}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;}
+  .navbar{background:var(--card)!important;border-bottom:1px solid var(--border);}
+  .check-row{display:flex;align-items:flex-start;gap:12px;padding:14px 0;border-bottom:1px solid #21262d;}
+  .check-row:last-child{border-bottom:none;}
+  .check-icon{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;font-size:.75rem;}
+  .icon-ok{background:rgba(63,185,80,.15);color:var(--green);}
+  .icon-fail{background:rgba(248,81,73,.15);color:var(--red);}
+  .check-name{font-weight:500;line-height:1.3;}
+  .check-detail{font-size:.82rem;color:var(--muted);margin-top:2px;}
+  .summary-bar{height:6px;border-radius:3px;background:#21262d;overflow:hidden;margin-bottom:1.5rem;}
+  .summary-fill{height:100%;border-radius:3px;background:var(--green);transition:width .5s;}
+</style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg mb-4">
+  <div class="container-fluid px-4">
+    <span class="navbar-brand fw-bold text-white">⚡ Arbitrage Bot</span>
+    <div class="d-flex gap-2">
+      <a href="/" class="btn btn-sm btn-outline-secondary px-3"><i class="fas fa-home me-1"></i>Dashboard</a>
+      <a href="/settings" class="btn btn-sm btn-outline-secondary px-3"><i class="fas fa-cog me-1"></i>Настройки</a>
+      <a href="/autostart" class="btn btn-sm btn-outline-secondary px-3"><i class="fas fa-rocket me-1"></i>Автостарт</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container px-4" style="max-width:700px;">
+  {% set ok_count = checks | selectattr('ok') | list | length %}
+  {% set total = checks | length %}
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="fas fa-stethoscope me-2" style="color:var(--blue);"></i>Диагностика системы</h4>
+    <span style="color:var(--muted);font-size:.85rem;">{{ ok_count }}/{{ total }} проверок</span>
+  </div>
+
+  <div class="summary-bar mb-4">
+    <div class="summary-fill" style="width:{{ (ok_count / total * 100)|int }}%;
+         background:{{ 'var(--green)' if ok_count == total else ('var(--yellow)' if ok_count > total//2 else 'var(--red)') }};"></div>
+  </div>
+
+  <div class="card px-4 py-2 mb-4">
+    {% for c in checks %}
+    <div class="check-row">
+      <div class="check-icon {{ 'icon-ok' if c.ok else 'icon-fail' }}">
+        <i class="fas fa-{{ 'check' if c.ok else 'times' }}"></i>
+      </div>
+      <div>
+        <div class="check-name">{{ c.name }}</div>
+        <div class="check-detail">{{ c.detail }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="d-flex gap-2">
+    <a href="/validate" class="btn btn-sm btn-outline-secondary px-3">
+      <i class="fas fa-sync me-1"></i>Повторить проверку
+    </a>
+    {% if ok_count < total %}
+    <a href="/settings" class="btn btn-sm px-3"
+       style="background:rgba(88,166,255,.12);color:var(--blue);border:1px solid rgba(88,166,255,.35);">
+      <i class="fas fa-wrench me-1"></i>Открыть настройки
+    </a>
+    {% endif %}
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

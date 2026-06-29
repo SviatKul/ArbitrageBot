@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "description": "Manual Polymarket title → Kalshi ticker hints. First matching rule wins. Tickers are illustrative — replace with symbols returned by Kalshi for your account series.",
+  "rules": [
+    {
+      "id": "pres-2024-trump-example",
+      "polymarket_title_contains": "Will Donald Trump win the 2024 US Presidential Election",
+      "kalshi_ticker": "KX_PRES_2024_TRUMP_EXAMPLE",
+      "notes": "Temporary mapping for local tests; swap to real Kalshi market ticker when available."
+    },
+    {
+      "id": "pres-2024-dem-nominee-generic",
+      "polymarket_title_contains": "Democratic presidential nomination 2024",
+      "kalshi_ticker": "KX_PREZ_D2024_NOM_EXAMPLE",
+      "notes": "Illustrative — align substring with your Polymarket question wording."
+    },
+    {
+      "id": "pres-2024-gop-nominee-generic",
+      "polymarket_title_contains": "Republican presidential nomination 2024",
+      "kalshi_ticker": "KX_PREZ_R2024_NOM_EXAMPLE",
+      "notes": "Illustrative — nomination markets wording varies by liquidity provider."
+    }
+  ]
+}
