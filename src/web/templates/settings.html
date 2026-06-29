@@ -258,6 +258,92 @@
   </div>
 
 </form>
+
+<!-- Мои ключи API (per-user, зашифровано) -->
+<div class="card p-4 mb-5" id="my-keys">
+  <div class="section-title">
+    <i class="fas fa-key me-2" style="color:var(--blue)"></i>
+    Мои ключи API
+    <span style="color:var(--muted);font-size:.9em;text-transform:none;letter-spacing:0;"> — сохраняются только для вас, зашифрованы</span>
+  </div>
+  <p class="text-muted small mb-3">Введите свои ключи — они перекроют глобальные настройки только для вашего аккаунта. Другие пользователи видят свои ключи.</p>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      <label class="form-label">Polymarket API Key</label>
+      <div class="input-group">
+        <input type="password" class="form-control font-monospace" id="uk_POLYMARKET_API_KEY" placeholder="••••••••">
+        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="deleteUserKey('POLYMARKET_API_KEY')" title="Удалить"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Polymarket Private Key</label>
+      <div class="input-group">
+        <input type="password" class="form-control font-monospace" id="uk_POLYMARKET_PRIVATE_KEY" placeholder="0x…">
+        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="deleteUserKey('POLYMARKET_PRIVATE_KEY')" title="Удалить"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Kalshi API Key ID</label>
+      <div class="input-group">
+        <input type="text" class="form-control font-monospace" id="uk_KALSHI_API_KEY_ID" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="deleteUserKey('KALSHI_API_KEY_ID')" title="Удалить"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Kalshi Private Key (PEM)</label>
+      <div class="input-group">
+        <input type="password" class="form-control font-monospace" id="uk_KALSHI_PRIVATE_KEY_PEM" placeholder="-----BEGIN EC PRIVATE KEY-----">
+        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="deleteUserKey('KALSHI_PRIVATE_KEY_PEM')" title="Удалить"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Betfair Username</label>
+      <div class="input-group">
+        <input type="text" class="form-control font-monospace" id="uk_BETFAIR_USERNAME" placeholder="email@betfair.com">
+        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="deleteUserKey('BETFAIR_USERNAME')" title="Удалить"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Betfair Password</label>
+      <div class="input-group">
+        <input type="password" class="form-control font-monospace" id="uk_BETFAIR_PASSWORD">
+        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="deleteUserKey('BETFAIR_PASSWORD')" title="Удалить"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Betfair App Key</label>
+      <div class="input-group">
+        <input type="text" class="form-control font-monospace" id="uk_BETFAIR_APP_KEY" placeholder="xxXXxxXXxxXX">
+        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="deleteUserKey('BETFAIR_APP_KEY')" title="Удалить"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Smarkets API Token</label>
+      <div class="input-group">
+        <input type="password" class="form-control font-monospace" id="uk_SMARKETS_API_TOKEN">
+        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="deleteUserKey('SMARKETS_API_TOKEN')" title="Удалить"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Telegram Bot Token</label>
+      <div class="input-group">
+        <input type="password" class="form-control font-monospace" id="uk_TELEGRAM_BOT_TOKEN">
+        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="deleteUserKey('TELEGRAM_BOT_TOKEN')" title="Удалить"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="uk-status" class="small mb-3 text-muted"></div>
+
+  <div class="d-flex align-items-center gap-3">
+    <button type="button" class="btn btn-primary px-4" onclick="saveUserKeys()">
+      <i class="fas fa-lock me-2"></i>Сохранить мои ключи
+    </button>
+    <span id="uk-toast" class="small"></span>
+  </div>
+</div>
+
 </div>
 
 <!-- Toast -->
@@ -294,6 +380,58 @@ function showToast(msg, ok) {
   t.textContent = msg;
   t.classList.remove('d-none');
   setTimeout(() => t.classList.add('d-none'), 4000);
+}
+
+// ── Per-user API keys ──────────────────────────────────────────────────
+async function loadUserKeyStatus() {
+  try {
+    const r = await fetch('/api/user/keys');
+    const d = await r.json();
+    if (d.ok && d.keys.length) {
+      document.getElementById('uk-status').innerHTML =
+        '🔑 Уже сохранены: ' + d.keys.map(k => `<code>${k}</code>`).join(', ');
+    }
+  } catch(e) {}
+}
+loadUserKeyStatus();
+
+async function saveUserKeys() {
+  const fields = ['POLYMARKET_API_KEY','POLYMARKET_PRIVATE_KEY','KALSHI_API_KEY_ID',
+    'KALSHI_PRIVATE_KEY_PEM','BETFAIR_USERNAME','BETFAIR_PASSWORD','BETFAIR_APP_KEY',
+    'SMARKETS_API_TOKEN','TELEGRAM_BOT_TOKEN'];
+  const data = {};
+  fields.forEach(k => {
+    const v = (document.getElementById('uk_' + k) || {}).value || '';
+    if (v.trim()) data[k] = v.trim();
+  });
+  if (!Object.keys(data).length) {
+    document.getElementById('uk-toast').textContent = '⚠️ Введите хотя бы один ключ';
+    return;
+  }
+  const r = await fetch('/api/user/keys', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(data),
+  });
+  const d = await r.json();
+  const t = document.getElementById('uk-toast');
+  if (d.ok) {
+    t.style.color = 'var(--green)';
+    t.textContent = '✅ Сохранено: ' + d.saved.join(', ');
+    fields.forEach(k => { const el = document.getElementById('uk_' + k); if(el) el.value=''; });
+    loadUserKeyStatus();
+  } else {
+    t.style.color = '#f85149';
+    t.textContent = '❌ Ошибка';
+  }
+  setTimeout(() => t.textContent = '', 5000);
+}
+
+async function deleteUserKey(keyName) {
+  if (!confirm(`Удалить ключ ${keyName}?`)) return;
+  const r = await fetch(`/api/user/keys/${keyName}`, { method: 'DELETE' });
+  const d = await r.json();
+  if (d.ok) loadUserKeyStatus();
 }
 
 async function testTelegram() {

@@ -619,6 +619,41 @@ def create_app() -> Flask:
         return jsonify({"ok": True, "saved": list(updates.keys())})
 
     # ------------------------------------------------------------------ #
+    # Per-user API keys
+    # ------------------------------------------------------------------ #
+
+    @app.route("/api/user/keys", methods=["GET"])
+    @login_required
+    def api_user_keys_get():
+        from web.auth import UserApiKey
+        names = UserApiKey.get_names(current_user.id)
+        return jsonify({"ok": True, "keys": names})
+
+    @app.route("/api/user/keys", methods=["POST"])
+    @login_required
+    def api_user_keys_save():
+        from web.auth import UserApiKey
+        data: dict = request.json or {}
+        saved = []
+        for key_name, value in data.items():
+            if key_name not in UserApiKey.API_KEY_NAMES:
+                continue
+            v = str(value).strip()
+            if v:
+                UserApiKey.set(current_user.id, key_name, v, app.secret_key)
+                saved.append(key_name)
+        return jsonify({"ok": True, "saved": saved})
+
+    @app.route("/api/user/keys/<key_name>", methods=["DELETE"])
+    @login_required
+    def api_user_keys_delete(key_name: str):
+        from web.auth import UserApiKey
+        if key_name not in UserApiKey.API_KEY_NAMES:
+            return jsonify({"ok": False, "error": "unknown key"})
+        UserApiKey.delete(current_user.id, key_name)
+        return jsonify({"ok": True})
+
+    # ------------------------------------------------------------------ #
     # P&L dashboard
     # ------------------------------------------------------------------ #
 

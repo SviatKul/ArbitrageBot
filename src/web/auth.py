@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from cryptography.fernet import Fernet
 from flask_login import LoginManager, UserMixin
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -39,6 +42,11 @@ def init_auth(app, storage_dir: Path) -> LoginManager:
     return lm
 
 
+def _make_fernet(secret: str) -> Fernet:
+    key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
+    return Fernet(key)
+
+
 def _init_db() -> None:
     with _connect() as conn:
         conn.execute("""
@@ -49,6 +57,16 @@ def _init_db() -> None:
                 is_admin      INTEGER NOT NULL DEFAULT 0,
                 created_at    TEXT    NOT NULL,
                 last_login    TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_api_keys (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                key_name    TEXT    NOT NULL,
+                enc_value   TEXT    NOT NULL,
+                updated_at  TEXT    NOT NULL,
+                UNIQUE(user_id, key_name)
             )
         """)
         # Migrations for older schemas
@@ -164,3 +182,68 @@ class User(UserMixin):
 
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
+
+
+class UserApiKey:
+    """Encrypted per-user API key storage."""
+
+    API_KEY_NAMES = [
+        "POLYMARKET_API_KEY", "POLYMARKET_PRIVATE_KEY",
+        "POLYMARKET_API_SECRET", "POLYMARKET_API_PASSPHRASE",
+        "KALSHI_API_KEY_ID", "KALSHI_PRIVATE_KEY_PEM",
+        "BETFAIR_USERNAME", "BETFAIR_PASSWORD", "BETFAIR_APP_KEY",
+        "SMARKETS_API_TOKEN",
+        "BETDAQ_USERNAME", "BETDAQ_PASSWORD", "BETDAQ_API_KEY",
+        "MATCHBOOK_USERNAME", "MATCHBOOK_PASSWORD",
+        "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+    ]
+
+    @staticmethod
+    def set(user_id: int, key_name: str, value: str, app_secret: str) -> None:
+        f = _make_fernet(app_secret)
+        enc = f.encrypt(value.encode()).decode()
+        ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with _connect() as conn:
+            conn.execute(
+                """INSERT INTO user_api_keys (user_id, key_name, enc_value, updated_at)
+                   VALUES (?,?,?,?)
+                   ON CONFLICT(user_id, key_name) DO UPDATE
+                   SET enc_value=excluded.enc_value, updated_at=excluded.updated_at""",
+                (user_id, key_name, enc, ts),
+            )
+            conn.commit()
+
+    @staticmethod
+    def delete(user_id: int, key_name: str) -> None:
+        with _connect() as conn:
+            conn.execute(
+                "DELETE FROM user_api_keys WHERE user_id=? AND key_name=?",
+                (user_id, key_name),
+            )
+            conn.commit()
+
+    @staticmethod
+    def get_all(user_id: int, app_secret: str) -> dict[str, str]:
+        f = _make_fernet(app_secret)
+        with _connect() as conn:
+            rows = conn.execute(
+                "SELECT key_name, enc_value FROM user_api_keys WHERE user_id=?",
+                (user_id,),
+            ).fetchall()
+        result: dict[str, str] = {}
+        for row in rows:
+            try:
+                result[row["key_name"]] = f.decrypt(row["enc_value"].encode()).decode()
+            except Exception:
+                pass
+        return result
+
+    @staticmethod
+    def get_names(user_id: int) -> list[str]:
+        """Return list of key names set for this user (without decrypting values)."""
+        with _connect() as conn:
+            rows = conn.execute(
+                "SELECT key_name FROM user_api_keys WHERE user_id=?",
+                (user_id,),
+            ).fetchall()
+        return [r["key_name"] for r in rows]

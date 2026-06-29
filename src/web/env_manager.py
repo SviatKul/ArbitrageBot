@@ -7,6 +7,15 @@ from pathlib import Path
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
 
+def get_effective_env(user_id: int, app_secret: str) -> dict[str, str]:
+    """Global .env merged with user's personal API keys (user keys take priority)."""
+    from web.auth import UserApiKey
+    env = read_env()
+    user_keys = UserApiKey.get_all(user_id, app_secret)
+    env.update(user_keys)
+    return env
+
+
 def read_env() -> dict[str, str]:
     """Return all KEY=VALUE pairs from .env (strips comments and blanks)."""
     result: dict[str, str] = {}
