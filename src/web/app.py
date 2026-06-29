@@ -1263,22 +1263,158 @@ def _start_telegram_polling(bot_mgr, app_secret: str = "") -> None:
             except Exception:
                 pass
 
-        HELP = (
-            "⚡ *ArbitrageBot команды:*\n"
-            "/start — запустить бота\n"
-            "/stop — остановить бота\n"
-            "/status — текущий статус\n"
-            "/pnl — дневной P&L\n"
-            "/opps — последние возможности\n"
-            "/help — эта справка"
-        )
+        DASHBOARD_URL = env.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
+        if DASHBOARD_URL:
+            DASHBOARD_URL = f"https://{DASHBOARD_URL}"
+        else:
+            DASHBOARD_URL = "https://web-production-a4120.up.railway.app"
+
+        MAIN_KEYBOARD = {
+            "inline_keyboard": [
+                [
+                    {"text": "📊 Статус",       "callback_data": "status"},
+                    {"text": "💰 P&L",           "callback_data": "pnl"},
+                ],
+                [
+                    {"text": "▶️ Запустить бот", "callback_data": "run"},
+                    {"text": "⏹ Остановить",     "callback_data": "stop"},
+                ],
+                [
+                    {"text": "📈 Возможности",   "callback_data": "opps"},
+                    {"text": "🌐 Дашборд",       "url": DASHBOARD_URL},
+                ],
+            ]
+        }
+
+        def send_keyboard(text: str, keyboard: dict = None) -> None:
+            payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+            if keyboard:
+                payload["reply_markup"] = keyboard
+            try:
+                _httpx.post(url_send, json=payload, timeout=10.0)
+            except Exception:
+                pass
+
+        def answer_callback(callback_id: str, text: str = "") -> None:
+            try:
+                _httpx.post(
+                    f"https://api.telegram.org/bot{token}/answerCallbackQuery",
+                    json={"callback_query_id": callback_id, "text": text},
+                    timeout=5.0,
+                )
+            except Exception:
+                pass
+
+        def _setup_bot() -> None:
+            try:
+                _httpx.post(
+                    f"https://api.telegram.org/bot{token}/setMyCommands",
+                    json={"commands": [
+                        {"command": "start",  "description": "Главное меню"},
+                        {"command": "status", "description": "Статус бота"},
+                        {"command": "run",    "description": "Запустить бота"},
+                        {"command": "stop",   "description": "Остановить бота"},
+                        {"command": "pnl",    "description": "P&L за 7 дней"},
+                        {"command": "opps",   "description": "Последние возможности"},
+                    ]},
+                    timeout=10.0,
+                )
+                _httpx.post(
+                    f"https://api.telegram.org/bot{token}/setChatMenuButton",
+                    json={"chat_id": chat_id, "menu_button": {
+                        "type": "web_app",
+                        "text": "📊 Дашборд",
+                        "web_app": {"url": DASHBOARD_URL},
+                    }},
+                    timeout=10.0,
+                )
+            except Exception:
+                pass
+
+        _setup_bot()
+
+        def _get_admin_uid() -> int:
+            from web.auth import User
+            admins = [u for u in User.all_users() if u.is_admin]
+            return admins[0].id if admins else 0
+
+        def _handle_status() -> None:
+            uid = _get_admin_uid()
+            env2 = read_env()
+            dry = env2.get("DRY_RUN", "true").lower() == "true"
+            running = bot_mgr.is_running(uid) if uid else False
+            pnl = _read_today_pnl(uid)
+            send_keyboard(
+                f"*Статус ArbitrageBot*\n\n"
+                f"Движок: {'🟢 Работает' if running else '🔴 Остановлен'}\n"
+                f"Режим: {'🧪 DRY\\_RUN' if dry else '⚡ LIVE'}\n"
+                f"Сегодня P&L: `${pnl:+.4f}`",
+                MAIN_KEYBOARD,
+            )
+
+        def _handle_run() -> None:
+            uid = _get_admin_uid()
+            if not uid:
+                send_keyboard("❌ Нет admin-пользователей.")
+                return
+            if bot_mgr.is_running(uid):
+                send_keyboard("Бот уже запущен.", MAIN_KEYBOARD)
+            else:
+                user_env = get_effective_env(uid, _app_secret)
+                ok, msg_txt = bot_mgr.start(uid, user_env)
+                send_keyboard(f"🚀 {msg_txt}" if ok else f"❌ {msg_txt}", MAIN_KEYBOARD)
+
+        def _handle_stop() -> None:
+            uid = _get_admin_uid()
+            if not uid:
+                send_keyboard("❌ Нет admin-пользователей.")
+                return
+            if bot_mgr.is_running(uid):
+                ok, msg_txt = bot_mgr.stop(uid)
+                send_keyboard("🛑 Бот остановлен." if ok else f"❌ {msg_txt}", MAIN_KEYBOARD)
+            else:
+                send_keyboard("Бот уже остановлен.", MAIN_KEYBOARD)
+
+        def _handle_opps() -> None:
+            try:
+                opps_data = get_opportunities(limit=5, min_pct=0.0)
+                if not opps_data:
+                    send_keyboard("Возможностей пока нет.", MAIN_KEYBOARD)
+                else:
+                    lines = ["*Последние арбитражные возможности:*\n"]
+                    for o in opps_data[:5]:
+                        pct   = o.get("profit_pct", 0)
+                        title = (o.get("title") or "")[:35]
+                        lines.append(f"• `{title}` — *+{pct:.2f}%*")
+                    send_keyboard("\n".join(lines), MAIN_KEYBOARD)
+            except Exception as e:
+                send_keyboard(f"❌ Ошибка: {e}")
+
+        def _handle_pnl() -> None:
+            uid = _get_admin_uid()
+            pnl_file = (bot_mgr.data_dir(uid) if uid else ROOT / "data") / "pnl_history.json"
+            try:
+                if pnl_file.is_file():
+                    raw = json.loads(pnl_file.read_text(encoding="utf-8"))
+                    items = sorted(raw.items())[-7:]
+                    lines = ["*P&L за последние 7 дней:*\n"]
+                    total = 0.0
+                    for d, v in items:
+                        total += v
+                        lines.append(f"  {d}: `${v:+.4f}`")
+                    lines.append(f"\n*Итого: `${total:+.4f}`*")
+                    send_keyboard("\n".join(lines), MAIN_KEYBOARD)
+                else:
+                    send_keyboard("Данных P&L пока нет. Запусти бота чтобы начать.", MAIN_KEYBOARD)
+            except Exception as e:
+                send_keyboard(f"❌ Ошибка: {e}")
 
         with _httpx.Client(timeout=35.0) as client:
             while True:
                 try:
                     resp = client.get(url_updates, params={
                         "offset": offset, "timeout": 30,
-                        "allowed_updates": ["message"],
+                        "allowed_updates": ["message", "callback_query"],
                     })
                     updates = resp.json().get("result", [])
                 except Exception:
@@ -1287,100 +1423,45 @@ def _start_telegram_polling(bot_mgr, app_secret: str = "") -> None:
 
                 for upd in updates:
                     offset = upd["update_id"] + 1
+
+                    # ── Inline button callbacks ──────────────────────────
+                    if "callback_query" in upd:
+                        cb   = upd["callback_query"]
+                        cb_id   = cb["id"]
+                        cb_data = cb.get("data", "")
+                        cb_from = str((cb.get("message") or {}).get("chat", {}).get("id", ""))
+                        if cb_from != chat_id:
+                            answer_callback(cb_id)
+                            continue
+                        answer_callback(cb_id, "⏳")
+                        if cb_data == "status": _handle_status()
+                        elif cb_data == "run":  _handle_run()
+                        elif cb_data == "stop": _handle_stop()
+                        elif cb_data == "opps": _handle_opps()
+                        elif cb_data == "pnl":  _handle_pnl()
+                        continue
+
+                    # ── Text commands ────────────────────────────────────
                     msg     = upd.get("message", {})
                     from_id = str((msg.get("chat") or {}).get("id", ""))
                     if from_id != chat_id:
                         continue
 
                     text = (msg.get("text") or "").strip()
-                    cmd  = text.split("@")[0].lower()  # handle /cmd@botname
+                    cmd  = text.split("@")[0].lower()
 
-                    if cmd in ("/help",):
-                        send(HELP)
-
-                    elif cmd == "/start":
-                        # /start from BotFather — show help
-                        send(HELP)
-
-                    elif cmd == "/run":
-                        from web.auth import User
-                        admins = [u for u in User.all_users() if u.is_admin]
-                        if not admins:
-                            send("❌ Нет admin-пользователей.")
-                        else:
-                            uid = admins[0].id
-                            if bot_mgr.is_running(uid):
-                                send("Бот уже запущен.")
-                            else:
-                                user_env = get_effective_env(uid, _app_secret)
-                                ok, msg_txt = bot_mgr.start(uid, user_env)
-                                send(f"🚀 {msg_txt}" if ok else f"❌ {msg_txt}")
-
-                    elif cmd == "/status":
-                        from web.auth import User
-                        admins = [u for u in User.all_users() if u.is_admin]
-                        uid = admins[0].id if admins else 0
-                        env2   = read_env()
-                        dry    = env2.get("DRY_RUN", "true").lower() == "true"
-                        running = bot_mgr.is_running(uid) if uid else False
-                        status = "🟢 Работает" if running else "🔴 Остановлен"
-                        pid    = f" (PID {bot_mgr.pid(uid)})" if (uid and bot_mgr.pid(uid)) else ""
-                        pnl    = _read_today_pnl(uid)
-                        send(
-                            f"*Статус*\n"
-                            f"Бот: {status}{pid}\n"
-                            f"DRY\\_RUN: {'✅ да' if dry else '⚠️ нет (LIVE)'}\n"
-                            f"Дневной P&L: ${pnl:.4f}"
+                    if cmd in ("/start", "/help", "/menu"):
+                        send_keyboard(
+                            "⚡ *ArbitrageBot*\n\nВыбери действие:",
+                            MAIN_KEYBOARD,
                         )
-
-                    elif cmd == "/stop":
-                        from web.auth import User
-                        admins = [u for u in User.all_users() if u.is_admin]
-                        if not admins:
-                            send("❌ Нет admin-пользователей.")
-                        else:
-                            uid = admins[0].id
-                            if bot_mgr.is_running(uid):
-                                ok, msg_txt = bot_mgr.stop(uid)
-                                send("🛑 Бот остановлен." if ok else f"❌ {msg_txt}")
-                            else:
-                                send("Бот уже остановлен.")
-
-                    elif cmd == "/opps":
-                        try:
-                            opps_data = get_opportunities(limit=5, min_pct=0.0)
-                            if not opps_data:
-                                send("Возможностей пока нет.")
-                            else:
-                                lines = ["*Последние возможности:*"]
-                                for o in opps_data[:5]:
-                                    pct = o.get("profit_pct", 0)
-                                    title = (o.get("title") or "")[:40]
-                                    lines.append(
-                                        f"• `{title}` — *+{pct:.2f}%*"
-                                    )
-                                send("\n".join(lines))
-                        except Exception as e:
-                            send(f"❌ Ошибка: {e}")
-
-                    elif cmd == "/pnl":
-                        pnl_file = ROOT / "data" / "pnl_history.json"
-                        try:
-                            if pnl_file.is_file():
-                                raw = json.loads(pnl_file.read_text(encoding="utf-8"))
-                                items = sorted(raw.items())[-7:]
-                                lines = ["*P&L за 7 дней:*"]
-                                for d, v in items:
-                                    sign = "+" if v >= 0 else ""
-                                    lines.append(f"  {d}: `{sign}${v:.4f}`")
-                                send("\n".join(lines))
-                            else:
-                                send("Данных P&L пока нет.")
-                        except Exception as e:
-                            send(f"❌ Ошибка: {e}")
-
+                    elif cmd == "/status": _handle_status()
+                    elif cmd == "/run":    _handle_run()
+                    elif cmd == "/stop":   _handle_stop()
+                    elif cmd == "/opps":   _handle_opps()
+                    elif cmd == "/pnl":    _handle_pnl()
                     elif cmd.startswith("/"):
-                        send(f"Неизвестная команда: `{cmd}`\n/help — список команд")
+                        send_keyboard(f"Неизвестная команда: `{cmd}`", MAIN_KEYBOARD)
 
     # Re-read env each restart in case token changed
     def _supervisor():
